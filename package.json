@@ -1,0 +1,14 @@
+{
+  "name": "cognirs.",
+  "version": "1.0.0",
+  "description": "Cognitive testing tool with fNIRS Integration",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

@@ -1,0 +1,62 @@
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInFast {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%       { transform: translateX(-5px); }
+    40%       { transform: translateX(5px); }
+    60%       { transform: translateX(-3px); }
+    80%       { transform: translateX(3px); }
+}
+
+@keyframes correctPop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+@keyframes countdownScale {
+    0%   { transform: scale(1.3); opacity: 0.3; }
+    60%  { opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes stimulusAppear {
+    from { opacity: 0; transform: scale(0.9); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+.anim-fade-in    { animation: fadeIn 0.35s ease forwards; }
+.anim-fade-fast  { animation: fadeInFast 0.2s ease forwards; }
+.anim-scale-in   { animation: scaleIn 0.3s ease forwards; }
+.anim-slide-up   { animation: slideUp 0.4s ease forwards; }
+.anim-shake      { animation: shake 0.35s ease; }
+.anim-correct    { animation: correctPop 0.3s ease; }
+
+.anim-d1 { animation-delay: 80ms; }
+.anim-d2 { animation-delay: 160ms; }
+.anim-d3 { animation-delay: 240ms; }
+.anim-d4 { animation-delay: 320ms; }
+.anim-d5 { animation-delay: 400ms; }
