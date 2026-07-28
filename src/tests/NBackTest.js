@@ -1,15 +1,22 @@
-import { BaseTest }    from './BaseTest.js';
+/***
+ * Working memory paradigm in fNIRS + ADHD research.
+ * (Monden et al. 2012, Gu et al. 2022, Yanagisawa et al. 2010)
+ *
+ * Feedback: silent border color change on the card (green/red, 300 ms).
+ */
+
+import { BaseTest }     from './BaseTest.js';
 import { SeededRandom } from '../utils/Random.js';
 
-const LETTERS = ['B', 'C', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M',
-    'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'X', 'Y'];
+const LETTERS = ['B','C','D','F','G','H','J','K','L','M',
+    'N','P','Q','R','S','T','V','W','Y'];
 
 const DEFAULT_CONFIG = {
-    n:             2,       // n-back level (0, 1, or 2)
-    trials:        30,      // total stimuli (excl. first n primes)
-    targetRatio:   0.33,    // proportion of target trials
-    stimDurationMs:1500,    // time stimulus is visible
-    isiMs:         500,     // blank inter-stimulus interval
+    n:             2,
+    trials:        30,
+    targetRatio:   0.33,
+    stimDurationMs:1500,
+    isiMs:         500,
     seed:          17,
 };
 
@@ -17,21 +24,13 @@ export class NBackTest extends BaseTest {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('n-back', `${cfg.n}-Back Task`, cfg);
-        this._rng        = new SeededRandom(cfg.seed);
-        this._sequence   = [];
-        this._responded  = false;
-        this._stimTimer  = null;
-        this._isiTimer   = null;
-        this._keyFn      = null;
-        this._phase      = 'idle';
-    }
-
-    setup() {
-        this._sequence   = this._generateSequence();
-        this._trialIndex = 0;
-        this._results    = [];
-        this._phase      = 'idle';
-        this._renderInstructions();
+        this._rng       = new SeededRandom(cfg.seed);
+        this._sequence  = [];
+        this._responded = false;
+        this._stimTimer = null;
+        this._isiTimer  = null;
+        this._keyFn     = null;
+        this._phase     = 'idle';
     }
 
     unmount() {
@@ -40,12 +39,109 @@ export class NBackTest extends BaseTest {
         super.unmount();
     }
 
+    _renderInstructions() {
+        const n = this.config.n;
+        const rule = {
+            0: 'Press <strong>Space</strong> every time you see the letter <strong>X</strong>.',
+            1: 'Press <strong>Space</strong> when the current letter is the same as the <strong>previous</strong> one.',
+            2: 'Press <strong>Space</strong> when the current letter matches the one shown <strong>two letters ago</strong>.',
+        }[n];
+
+        this._buildInstructionShell({
+            title:    `${n}-Back Task`,
+            subtitle: rule,
+            bullets: [
+                `A single letter appears on screen for ${this.config.stimDurationMs / 1000} s, then a brief blank`,
+                'Press Space if it matches — do nothing if it does not',
+                'Accuracy matters more than speed; do not guess',
+                `${this.config.trials} letters total`,
+            ],
+            keysHtml: `
+        <div style="display:flex; align-items:center; gap:10px;">
+          <kbd style="
+            font-family:monospace; font-size:0.78rem; font-weight:600;
+            padding:4px 12px; background:#fff;
+            border:1.5px solid var(--color-border-strong,#a8c4ee);
+            border-radius:5px; color:var(--color-text,#1e2d4a);
+            box-shadow:0 1px 0 var(--color-border-strong,#a8c4ee);
+          ">Space</kbd>
+          <span style="font-size:0.85rem; color:var(--color-text-muted,#8aa4c0);">= target match</span>
+        </div>
+      `,
+        });
+    }
+
+    _renderDemo() {
+        const n = this.config.n;
+        this._buildDemoShell(`${n}-Back — live preview`);
+
+        const seq = n === 0
+            ? ['M', 'X', 'K', 'X', 'B']
+            : n === 1
+                ? ['K', 'K', 'B', 'T', 'T']
+                : ['G', 'M', 'G', 'B', 'M', 'B'];
+
+        const isTarget = n === 0
+            ? seq.map(l => l === 'X')
+            : seq.map((l, i) => i >= n && l === seq[i - n]);
+
+        const stage = document.getElementById('demo-stage');
+        stage.innerHTML = `
+      <div class="demo-nback">
+        <div class="demo-nback__card" id="demo-nback-card">
+          <span class="demo-nback__letter" id="demo-nback-letter"></span>
+        </div>
+        <div class="demo-nback__trail" id="demo-nback-trail">
+          ${seq.map((_, i) => `<div class="demo-trail-dot" id="demo-dot-${i}"></div>`).join('')}
+        </div>
+      </div>
+    `;
+
+        let cur = 0;
+        const CYCLE = this.config.stimDurationMs + this.config.isiMs;
+
+        const showFrame = () => {
+            const card   = document.getElementById('demo-nback-card');
+            const letter = document.getElementById('demo-nback-letter');
+            if (!card || !letter) return;
+
+            document.querySelectorAll('.demo-trail-dot').forEach((d, i) => {
+                d.classList.toggle('demo-trail-dot--active', i === cur);
+                d.classList.toggle('demo-trail-dot--past',   i < cur);
+            });
+
+            letter.textContent = seq[cur];
+            card.className = 'demo-nback__card';
+            void card.offsetWidth;
+            card.classList.add('demo-nback__card--show');
+            this._demoTimeout(() => {
+                if (isTarget[cur]) {
+                    card.classList.add('demo-nback__card--hit');
+                }
+                this._demoTimeout(() => {
+                    card.classList.remove('demo-nback__card--show', 'demo-nback__card--hit');
+                    letter.textContent = '';
+                    cur = (cur + 1) % seq.length;
+                }, 300);
+            }, this.config.stimDurationMs - 300);
+        };
+
+        showFrame();
+        this._demoInterval(showFrame, CYCLE);
+    }
+
+    setup() {
+        this._sequence  = this._generateSequence();
+        this._phase     = 'idle';
+        this._nextStimulus();
+    }
+
     _generateSequence() {
         const n        = this.config.n;
         const total    = this.config.trials;
         const nTargets = Math.round(total * this.config.targetRatio);
-
         const sequence = [];
+
         for (let i = 0; i < n; i++) {
             sequence.push({ letter: this._rng.pick(LETTERS), isTarget: false, isPrime: true });
         }
@@ -57,89 +153,18 @@ export class NBackTest extends BaseTest {
 
         for (let i = 0; i < total; i++) {
             let letter;
-            if (this.config.n === 0) {
-                letter = targetSlots.has(i) ? 'X' : this._rng.pick(LETTERS.filter(l => l !== 'X'));
+            if (n === 0) {
+                letter = targetSlots.has(i) ? 'X' : this._rng.pick(LETTERS);
             } else {
-                const nBack = sequence[sequence.length - n];
-                if (targetSlots.has(i)) {
-                    letter = nBack.letter;
-                } else {
-                    const pool = LETTERS.filter(l => l !== nBack.letter);
-                    letter = this._rng.pick(pool);
-                }
+                const nBackLetter = sequence[sequence.length - n].letter;
+                letter = targetSlots.has(i)
+                    ? nBackLetter
+                    : this._rng.pick(LETTERS.filter(l => l !== nBackLetter));
             }
             sequence.push({ letter, isTarget: targetSlots.has(i), isPrime: false });
         }
 
         return sequence;
-    }
-
-    _renderInstructions() {
-        const n = this.config.n;
-        const descriptions = {
-            0: 'Press <strong>Space</strong> every time you see the letter <strong>X</strong>.',
-            1: 'Press <strong>Space</strong> when the current letter matches the <strong>previous</strong> letter.',
-            2: 'Press <strong>Space</strong> when the current letter matches the letter from <strong>two steps ago</strong>.',
-        };
-
-        const exampleSeq = n === 0
-            ? ['B', 'X', 'M', 'X', 'K', 'X']
-            : n === 1
-                ? ['B', 'B', 'M', 'K', 'K', 'P']
-                : ['B', 'M', 'B', 'K', 'P', 'K'];
-
-        const targets = n === 0
-            ? [1, 3, 5]
-            : n === 1
-                ? [1, 4]
-                : [2, 5];
-
-        this._container.innerHTML = `
-      <div class="test-instructions anim-fade-in">
-        <h2 class="test-title">${this.config.n}-Back Task</h2>
-        <p class="test-subtitle">
-          A letter will appear briefly on screen, one at a time in a continuous stream.
-          ${descriptions[n]}
-        </p>
-
-        <ul class="instruction-list">
-          <li>Respond with <strong>Space</strong> on target trials; do not press on non-targets</li>
-          <li>You have ${this.config.stimDurationMs / 1000}s to respond — the letter disappears after that</li>
-          <li>Stay focused — the pace is continuous with no breaks</li>
-          <li>${this.config.trials} stimuli · approximately 3–4 minutes</li>
-        </ul>
-
-        <div style="margin-bottom: var(--space-xl);">
-          <p style="font-size:0.78rem; font-weight:500; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:var(--space-sm);">
-            Example sequence — press Space on highlighted letters
-          </p>
-          <div style="display:flex; gap:var(--space-sm); align-items:center; flex-wrap:wrap;">
-            ${exampleSeq.map((l, i) => `
-              <div style="
-                width: 52px; height: 52px;
-                border-radius: var(--radius-md);
-                border: 2px solid ${targets.includes(i) ? 'var(--color-primary)' : 'var(--color-border)'};
-                background: ${targets.includes(i) ? 'var(--color-primary-xlt)' : 'var(--color-surface-alt)'};
-                display: flex; align-items: center; justify-content: center;
-                font-size: 1.3rem; font-weight: 600;
-                color: ${targets.includes(i) ? 'var(--color-primary-dark)' : 'var(--color-text-muted)'};
-                font-family: var(--font-mono);
-              ">
-                ${l}
-              </div>
-            `).join('')}
-          </div>
-          <p style="font-size:0.75rem; color:var(--color-text-muted); margin-top:var(--space-sm);">
-            Blue border = press Space &nbsp;·&nbsp; Gray = do nothing
-          </p>
-        </div>
-
-        <button class="btn btn--primary btn--lg" id="nback-start">Begin task</button>
-      </div>
-    `;
-
-        document.getElementById('nback-start')
-            .addEventListener('click', () => this._renderCountdown(3, () => this._nextStimulus()));
     }
 
     _nextStimulus() {
@@ -150,20 +175,18 @@ export class NBackTest extends BaseTest {
             return;
         }
 
-        const stimulus = this._sequence[this._trialIndex];
-        this._responded = false;
-        this._phase = 'stim';
+        const stimulus   = this._sequence[this._trialIndex];
+        this._responded  = false;
+        this._phase      = 'stim';
 
-        this._renderStimulus(stimulus);
+        this._renderStimulusScreen(stimulus);
 
         if (!stimulus.isPrime) {
             this._startTrial(stimulus);
             this._attachKey(this._makeResponseHandler(stimulus));
         }
 
-        this._stimTimer = setTimeout(() => {
-            this._onStimulusEnd(stimulus);
-        }, this.config.stimDurationMs);
+        this._stimTimer = setTimeout(() => this._onStimulusEnd(stimulus), this.config.stimDurationMs);
     }
 
     _onStimulusEnd(stimulus) {
@@ -171,13 +194,21 @@ export class NBackTest extends BaseTest {
         this._phase = 'isi';
         this._detachKey();
 
-        if (!stimulus.isPrime && stimulus.isTarget && !this._responded) {
-            this._endTrial({ correct: false, hit: false, miss: true, falseAlarm: false, isTarget: true });
-        } else if (!stimulus.isPrime && !stimulus.isTarget && !this._responded) {
-            this._endTrial({ correct: true, hit: false, miss: false, falseAlarm: false, isTarget: false });
+        if (!stimulus.isPrime) {
+            if (stimulus.isTarget && !this._responded) {
+                this._endTrial({ correct: false, hit: false, miss: true, falseAlarm: false, isTarget: true });
+            } else if (!stimulus.isTarget && !this._responded) {
+                this._endTrial({ correct: true,  hit: false, miss: false, falseAlarm: false, isTarget: false });
+            }
         }
 
-        this._renderISI();
+        const card = document.getElementById('nback-card');
+        if (card) {
+            card.classList.remove('nback-card--show', 'nback-card--hit', 'nback-card--miss');
+            const letter = card.querySelector('.nback-letter');
+            if (letter) letter.textContent = '';
+        }
+
         this._isiTimer = setTimeout(() => {
             this._trialIndex++;
             this._nextStimulus();
@@ -198,84 +229,40 @@ export class NBackTest extends BaseTest {
             if (!stimulus.isPrime) {
                 this._endTrial({
                     correct,
-                    hit:        stimulus.isTarget && correct,
+                    hit:        correct,
                     miss:       false,
                     falseAlarm: !stimulus.isTarget,
                     isTarget:   stimulus.isTarget,
                 });
             }
 
-            const card = document.getElementById('nback-stim-card');
+            const card = document.getElementById('nback-card');
             if (card) {
-                card.style.borderColor = correct ? 'var(--color-success)' : 'var(--color-danger)';
-                card.style.background  = correct ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
+                card.classList.add(correct ? 'nback-card--hit' : 'nback-card--miss');
             }
         };
     }
 
-    _renderStimulus(stimulus) {
-        const nonPrimeIndex = this._trialIndex - this.config.n;
-        const pct = Math.max(0, (nonPrimeIndex / this.config.trials) * 100);
-
-        const primeLabel = stimulus.isPrime
-            ? `<span class="badge badge--neutral" style="margin-left:auto; font-weight:600;">Memorise</span>`
-            : '';
+    _renderStimulusScreen(stimulus) {
+        const nonPrimeIdx = this._trialIndex - this.config.n;
+        const pct         = Math.max(0, (nonPrimeIdx / this.config.trials) * 100);
 
         this._container.innerHTML = `
-      <div class="nback-layout anim-fade-fast">
-
-        <div class="nback-header">
-          <div class="progress-bar" style="flex:1;">
+      <div class="test-screen">
+        <div class="test-progress">
+          <div class="progress-bar">
             <div class="progress-bar__fill" style="width:${pct}%;"></div>
           </div>
-          <span class="nback-count">
-            ${Math.max(0, nonPrimeIndex + 1)} / ${this.config.trials}
-          </span>
-          ${primeLabel}
         </div>
-
-        <div class="nback-arena">
-          <div class="nback-stim-card" id="nback-stim-card">
+        <div class="test-arena nback-arena">
+          <div class="nback-card nback-card--show" id="nback-card">
             <span class="nback-letter">${stimulus.letter}</span>
           </div>
         </div>
-
-        <div class="nback-footer">
-          <div class="nback-key-hint">
-            <kbd class="nback-kbd">Space</kbd>
-            <span>= target match</span>
-          </div>
-          ${this.config.n > 0 ? `
-            <div class="nback-history" id="nback-history">
-              ${this._getRecentLetters(3).map((l, i) => `
-                <div class="nback-hist-item ${i === 3 - this.config.n ? 'nback-hist-item--nback' : ''}">
-                  <span class="nback-hist-letter">${l}</span>
-                  <span class="nback-hist-label">${i === 3 - this.config.n ? `${this.config.n}-back` : `${3 - i} ago`}</span>
-                </div>
-              `).join('')}
-            </div>
-          ` : ''}
-        </div>
-
       </div>
     `;
     }
 
-    _renderISI() {
-        const card = document.getElementById('nback-stim-card');
-        if (card) {
-            card.innerHTML = '';
-            card.style.borderColor = 'var(--color-border)';
-            card.style.background  = 'var(--color-surface-alt)';
-        }
-    }
-
-    _getRecentLetters(count) {
-        const history = this._sequence.slice(0, this._trialIndex).map(s => s.letter);
-        const recent  = history.slice(-count);
-        while (recent.length < count) recent.unshift('–');
-        return recent;
-    }
 
     _attachKey(fn) {
         this._detachKey();
@@ -296,7 +283,4 @@ export class NBackTest extends BaseTest {
         this._stimTimer = null;
         this._isiTimer  = null;
     }
-
-    renderTrial()    {}
-    processResponse() {}
 }

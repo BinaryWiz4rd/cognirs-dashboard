@@ -1,4 +1,8 @@
-import { BaseTest }    from './BaseTest.js';
+/**
+ *
+ */
+
+import { BaseTest }     from './BaseTest.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const COLORS = [
@@ -14,7 +18,7 @@ const DEFAULT_CONFIG = {
     trials:         24,
     congruentRatio: 0.33,
     displayMs:      3000,
-    itiMs:          600,
+    itiMs:          500,
     seed:           42,
 };
 
@@ -23,21 +27,103 @@ export class StroopTest extends BaseTest {
         super('stroop', 'Stroop Color–Word Test', { ...DEFAULT_CONFIG, ...config });
         this._rng    = new SeededRandom(this.config.seed);
         this._trials = [];
+        this._trialTimeout = null;
     }
 
+    unmount() {
+        clearTimeout(this._trialTimeout);
+        super.unmount();
+    }
+
+
+    _renderInstructions() {
+        this._buildInstructionShell({
+            title:    'Stroop Color–Word Test',
+            subtitle: 'A word will appear in coloured ink. Select the <strong>ink colour</strong> — ignore what the word says.',
+            bullets: [
+                'Focus on the colour of the letters, not the meaning of the word',
+                'Use the colour buttons to respond',
+                'Respond as quickly and accurately as possible',
+                `${this.config.trials} trials · approximately 3–4 minutes`,
+            ],
+        });
+    }
+
+
+    _renderDemo() {
+        this._buildDemoShell('Stroop — live preview');
+        const stage = document.getElementById('demo-stage');
+
+        const demoTrials = [
+            { word: 'BLUE',   inkColor: COLORS[1], congruent: true  },
+            { word: 'RED',    inkColor: COLORS[2], congruent: false }, // word=RED, ink=GREEN
+            { word: 'GREEN',  inkColor: COLORS[3], congruent: false }, // word=GREEN, ink=YELLOW
+            { word: 'PURPLE', inkColor: COLORS[4], congruent: true  },
+        ];
+
+        stage.innerHTML = `
+      <div class="demo-stroop">
+        <div class="demo-stroop__display" id="demo-stroop-display">
+          <span class="demo-stroop__word" id="demo-stroop-word"></span>
+        </div>
+        <div class="demo-stroop__buttons">
+          ${COLORS.map(c => `
+            <button class="demo-stroop__btn" id="demo-stroop-${c.name}"
+              style="color:${c.css};border-color:${c.border};background:${c.bg};">
+              ${c.name}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+        let cur = 0;
+        const PERIOD = 2200;
+
+        const runFrame = () => {
+            const display = document.getElementById('demo-stroop-display');
+            const wordEl  = document.getElementById('demo-stroop-word');
+            if (!display || !wordEl) return;
+
+            const trial = demoTrials[cur % demoTrials.length];
+            wordEl.textContent  = trial.word;
+            wordEl.style.color  = trial.inkColor.css;
+            display.style.background   = 'var(--color-surface)';
+            display.style.borderColor  = 'var(--color-border)';
+
+            this._demoTimeout(() => {
+                const correctBtn = document.getElementById(`demo-stroop-${trial.inkColor.name}`);
+                if (correctBtn) correctBtn.classList.add('demo-stroop__btn--selected');
+                display.style.background  = trial.inkColor.bg;
+                display.style.borderColor = trial.inkColor.border;
+
+                this._demoTimeout(() => {
+                    if (correctBtn) correctBtn.classList.remove('demo-stroop__btn--selected');
+                    wordEl.textContent = '';
+                    display.style.background  = 'var(--color-surface)';
+                    display.style.borderColor = 'var(--color-border)';
+                    cur++;
+                }, 500);
+            }, 1600);
+        };
+
+        runFrame();
+        this._demoInterval(runFrame, PERIOD);
+    }
+
+
     setup() {
-        this._trials     = this._generateTrials();
-        this._trialIndex = 0;
-        this._results    = [];
-        this._renderInstructions();
+        this._trials = this._generateTrials();
+        this._nextTrial();
     }
 
     _generateTrials() {
-        const total = this.config.trials;
+        const total     = this.config.trials;
+        const nCongruent = Math.round(total * this.config.congruentRatio);
         return this._rng.shuffle(
             Array.from({ length: total }, (_, i) => {
                 const inkColor  = this._rng.pick(COLORS);
-                const congruent = i < Math.round(total * this.config.congruentRatio);
+                const congruent = i < nCongruent;
                 const wordColor = congruent
                     ? inkColor
                     : this._rng.pick(COLORS.filter(c => c.name !== inkColor.name));
@@ -46,60 +132,36 @@ export class StroopTest extends BaseTest {
         );
     }
 
-    _renderInstructions() {
-        this._container.innerHTML = `
-      <div class="test-instructions anim-fade-in">
-        <h2 class="test-title">Stroop Color–Word Test</h2>
-        <p class="test-subtitle">
-          A word will appear on screen printed in a colored ink.
-          Identify the <strong>ink color</strong> — not what the word says.
-        </p>
-        <ul class="instruction-list">
-          <li>Focus on the color of the letters, not the word itself</li>
-          <li>Respond as quickly and accurately as possible</li>
-          <li>Use the color buttons to submit your answer</li>
-          <li>${this.config.trials} trials total · approx. 3–4 minutes</li>
-        </ul>
-        <div style="display: flex; gap: var(--space-sm); margin-bottom: var(--space-xl);">
-          <div style="flex: 1; background: var(--color-surface-alt); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-md); text-align: center;">
-            <p style="font-size: 1.8rem; font-weight: 600; color: var(--stroop-green); margin-bottom: 4px;">RED</p>
-            <p style="font-size: 0.75rem; color: var(--color-text-muted);">Correct answer: <strong>Green</strong></p>
-          </div>
-        </div>
-        <button class="btn btn--primary btn--lg" id="stroop-start">Begin test</button>
-      </div>
-    `;
-        document.getElementById('stroop-start')
-            .addEventListener('click', () => this._renderCountdown(3, () => this._nextTrial()));
-    }
-
     _nextTrial() {
-        if (this._trialIndex >= this._trials.length) { this._done(); return; }
+        if (this._trialIndex >= this._trials.length) {
+            this._done();
+            return;
+        }
         this.renderTrial(this._trials[this._trialIndex]);
     }
 
     renderTrial(trial) {
         const pct = (this._trialIndex / this._trials.length) * 100;
+
         this._container.innerHTML = `
-      <div class="stroop-layout anim-fade-fast">
-        <div class="stroop-header">
-          <div class="progress-bar" style="flex: 1;">
-            <div class="progress-bar__fill" style="width: ${pct}%;"></div>
+      <div class="test-screen">
+        <div class="test-progress">
+          <div class="progress-bar">
+            <div class="progress-bar__fill" style="width:${pct}%;"></div>
           </div>
-          <span class="stroop-trial-count">${this._trialIndex + 1} / ${this._trials.length}</span>
         </div>
-        <div class="stroop-display" id="stroop-display">
-          <span class="stroop-word" style="color: ${trial.inkColor.css};">${trial.word}</span>
-        </div>
-        <p class="stroop-question">What color is the ink?</p>
-        <div class="stroop-choices">
-          ${COLORS.map(c => `
-            <button
-              class="stroop-choice-btn"
-              data-color="${c.name}"
-              style="color: ${c.css}; border-color: ${c.border}; background: ${c.bg};"
-            >${c.name}</button>
-          `).join('')}
+        <div class="test-arena stroop-test-arena">
+          <div class="stroop-word-display" id="stroop-display">
+            <span class="stroop-word-text" style="color:${trial.inkColor.css};">${trial.word}</span>
+          </div>
+          <div class="stroop-btn-grid">
+            ${COLORS.map(c => `
+              <button class="stroop-choice-btn" data-color="${c.name}"
+                style="color:${c.css};border-color:${c.border};background:${c.bg};">
+                ${c.name}
+              </button>
+            `).join('')}
+          </div>
         </div>
       </div>
     `;
@@ -125,8 +187,8 @@ export class StroopTest extends BaseTest {
 
         const display = document.getElementById('stroop-display');
         if (display && !timedOut) {
-            display.style.background = correct ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
             display.style.borderColor = correct ? 'var(--color-success)' : 'var(--color-danger)';
+            display.style.background  = correct ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
         }
         this._container.querySelectorAll('.stroop-choice-btn').forEach(b => (b.disabled = true));
 

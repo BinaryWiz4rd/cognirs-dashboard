@@ -1,4 +1,9 @@
-import { BaseTest }    from './BaseTest.js';
+/**
+ *
+ * Error feedback: brief red flash on the wrong node.
+ */
+
+import { BaseTest }     from './BaseTest.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const DEFAULT_CONFIG = {
@@ -12,22 +17,113 @@ export class TrailMakingTest extends BaseTest {
         super('trail-making', 'Trail Making Test', { ...DEFAULT_CONFIG, ...config });
         this._rng          = new SeededRandom(this.config.seed);
         this._items        = [];
-        this._path         = [];
+        this._nextExpected = 0;
         this._errors       = 0;
         this._startTime    = null;
         this._points       = [];
     }
 
+
+    _renderInstructions() {
+        const isB    = this.config.variant === 'B';
+        const target = isB ? '1 → A → 2 → B → 3 → C …' : '1 → 2 → 3 → 4 …';
+        this._buildInstructionShell({
+            title:    `Trail Making — Part ${this.config.variant}`,
+            subtitle: isB
+                ? 'Connect circles by <strong>alternating between numbers and letters</strong>.'
+                : 'Connect the numbered circles <strong>in ascending order</strong>.',
+            bullets: [
+                `Tap each circle in sequence: ${target}`,
+                'Connect them as quickly as possible',
+                isB ? 'Strictly alternate: always number → letter → number → letter' : '',
+                'An incorrect tap will flash red — continue without stopping',
+                `${this.config.count} circles total`,
+            ].filter(Boolean),
+        });
+    }
+
+    _renderDemo() {
+        const isB = this.config.variant === 'B';
+        this._buildDemoShell(`Trail Making ${this.config.variant} — live preview`);
+        const stage = document.getElementById('demo-stage');
+
+        const demoNodes = isB
+            ? [
+                { label: '1', x: 15, y: 50 },
+                { label: 'A', x: 35, y: 20 },
+                { label: '2', x: 55, y: 50 },
+                { label: 'B', x: 75, y: 25 },
+                { label: '3', x: 88, y: 55 },
+            ]
+            : [
+                { label: '1', x: 12, y: 55 },
+                { label: '2', x: 30, y: 22 },
+                { label: '3', x: 55, y: 48 },
+                { label: '4', x: 75, y: 18 },
+                { label: '5', x: 88, y: 60 },
+            ];
+
+        stage.innerHTML = `
+      <div class="demo-tmt">
+        <svg class="demo-tmt__svg" id="demo-tmt-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polyline id="demo-tmt-line" points="" fill="none"
+            stroke="var(--color-primary)" stroke-width="0.8"
+            stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+        </svg>
+        ${demoNodes.map((n, i) => `
+          <div class="demo-tmt__node" id="demo-tmt-node-${i}"
+            style="left:${n.x}%;top:${n.y}%;">
+            ${n.label}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+        let step   = 0;
+        let pts    = [];
+        const STEP = 900;
+
+        const advance = () => {
+            if (step >= demoNodes.length) {
+                this._demoTimeout(() => {
+                    pts  = [];
+                    step = 0;
+                    const line = document.getElementById('demo-tmt-line');
+                    if (line) line.setAttribute('points', '');
+                    demoNodes.forEach((_, i) => {
+                        const nd = document.getElementById(`demo-tmt-node-${i}`);
+                        if (nd) nd.className = 'demo-tmt__node';
+                    });
+                }, 1200);
+                return;
+            }
+
+            const node = demoNodes[step];
+            const nd   = document.getElementById(`demo-tmt-node-${step}`);
+            if (nd) nd.classList.add('demo-tmt__node--done');
+
+            pts.push(`${node.x + 1.5},${node.y + 1.5}`);
+            const line = document.getElementById('demo-tmt-line');
+            if (line) line.setAttribute('points', pts.join(' '));
+
+            step++;
+        };
+
+        advance();
+        this._demoInterval(advance, STEP);
+    }
+
     setup() {
-        this._items     = this._generateItems();
-        this._path      = [];
-        this._errors    = 0;
-        this._results   = [];
-        this._renderInstructions();
+        this._items        = this._generateItems();
+        this._nextExpected = 0;
+        this._errors       = 0;
+        this._points       = [];
+        this._startTime    = null;
+        this._renderTrail();
     }
 
     _generateItems() {
-        const n = this.config.count;
+        const n      = this.config.count;
         const labels = this.config.variant === 'A'
             ? Array.from({ length: n }, (_, i) => String(i + 1))
             : Array.from({ length: n }, (_, i) =>
@@ -38,66 +134,42 @@ export class TrailMakingTest extends BaseTest {
 
         const positions = [];
         labels.forEach(() => {
-            let x, y, ok;
-            let attempts = 0;
+            let x, y, ok, attempts = 0;
             do {
-                x = this._rng.nextInt(7, 90);
-                y = this._rng.nextInt(7, 90);
-                ok = positions.every(p => Math.hypot(p.x - x, p.y - y) > 14);
+                x  = this._rng.nextInt(7, 90);
+                y  = this._rng.nextInt(8, 88);
+                ok = positions.every(p => Math.hypot(p.x - x, p.y - y) > 13);
                 attempts++;
-            } while (!ok && attempts < 100);
+            } while (!ok && attempts < 200);
             positions.push({ x, y });
         });
 
-        return labels.map((label, i) => ({ id: i, label, x: positions[i].x, y: positions[i].y, order: i }));
+        return labels.map((label, i) => ({
+            id: i, label, x: positions[i].x, y: positions[i].y, order: i,
+        }));
     }
 
-    _renderInstructions() {
-        const desc = this.config.variant === 'A'
-            ? `Connect the numbered circles in order: <strong>1 → 2 → 3 … → ${this.config.count}</strong>`
-            : `Alternate between numbers and letters: <strong>1 → A → 2 → B → 3 → C …</strong>`;
-
-        this._container.innerHTML = `
-      <div class="test-instructions anim-fade-in">
-        <h2 class="test-title">Trail Making Test — ${this.config.variant === 'A' ? 'Part A' : 'Part B'}</h2>
-        <p class="test-subtitle">${desc}</p>
-        <ul class="instruction-list">
-          <li>Tap or click each circle in the correct sequence</li>
-          <li>Connect them as quickly as possible without errors</li>
-          ${this.config.variant === 'B' ? '<li>Strictly alternate: number → letter → number → letter</li>' : ''}
-          <li>If you make an error, you will see feedback — simply continue correctly</li>
-        </ul>
-        <button class="btn btn--primary btn--lg" id="tmt-start">Begin test</button>
-      </div>
-    `;
-        document.getElementById('tmt-start')
-            .addEventListener('click', () => this._renderCountdown(3, () => this._renderTrial()));
-    }
-
-    _renderTrial() {
+    _renderTrail() {
         this._startTime = performance.now();
-        this._nextExpected = 0;
         this._startTrial({ variant: this.config.variant });
 
         this._container.innerHTML = `
-      <div class="tmt-layout anim-fade-fast">
-        <div class="tmt-info-row">
-          <span class="tmt-next-label">Next:</span>
-          <span class="tmt-next-value" id="tmt-next">${this._items[0].label}</span>
-          <div style="display: flex; gap: var(--space-sm); align-items: center; margin-left: auto;">
-            <span class="badge badge--neutral" id="tmt-error-badge">0 errors</span>
+      <div class="test-screen test-screen--fill">
+        <div class="test-progress">
+          <div class="progress-bar">
+            <div class="progress-bar__fill" style="width:0%;"></div>
           </div>
         </div>
         <div class="tmt-canvas-wrap">
           <svg class="tmt-svg" id="tmt-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-            <polyline id="tmt-polyline" points="" fill="none" stroke="var(--color-primary)" stroke-width="0.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+            <polyline id="tmt-polyline" points="" fill="none"
+              stroke="var(--color-primary)" stroke-width="0.5"
+              stroke-linecap="round" stroke-linejoin="round" opacity="0.65"/>
           </svg>
           ${this._items.map(item => `
             <button class="tmt-node" id="tmt-node-${item.id}"
               style="left:${item.x}%;top:${item.y}%;"
-              data-order="${item.order}"
-              aria-label="Node ${item.label}"
-            >${item.label}</button>
+              data-order="${item.order}">${item.label}</button>
           `).join('')}
         </div>
       </div>
@@ -105,7 +177,7 @@ export class TrailMakingTest extends BaseTest {
 
         this._items.forEach(item => {
             document.getElementById(`tmt-node-${item.id}`)
-                .addEventListener('click', () => this._handleClick(item));
+                ?.addEventListener('click', () => this._handleClick(item));
         });
     }
 
@@ -116,46 +188,31 @@ export class TrailMakingTest extends BaseTest {
             node.disabled = true;
 
             this._points.push(`${item.x + 1.5},${item.y + 1.5}`);
-            document.getElementById('tmt-polyline').setAttribute('points', this._points.join(' '));
+            document.getElementById('tmt-polyline')?.setAttribute('points', this._points.join(' '));
+
+            const pct  = (this._nextExpected / (this._items.length - 1)) * 100;
+            const fill = this._container.querySelector('.progress-bar__fill');
+            if (fill) fill.style.width = `${pct}%`;
 
             this._nextExpected++;
-            if (this._nextExpected < this._items.length) {
-                document.getElementById('tmt-next').textContent = this._items[this._nextExpected].label;
-            } else {
-                this._finishTrial();
+
+            if (this._nextExpected >= this._items.length) {
+                this._finish();
             }
         } else {
             this._errors++;
-            document.getElementById('tmt-error-badge').textContent = `${this._errors} error${this._errors !== 1 ? 's' : ''}`;
             const node = document.getElementById(`tmt-node-${item.id}`);
             node.classList.add('tmt-node--wrong', 'anim-shake');
             setTimeout(() => node.classList.remove('tmt-node--wrong', 'anim-shake'), 400);
         }
     }
 
-    _finishTrial() {
+    _finish() {
         const totalTime = performance.now() - this._startTime;
-        const result    = this._endTrial({ totalTime, errors: this._errors, variant: this.config.variant });
-        setTimeout(() => { this.renderTrial(result); this._done(); }, 300);
+        this._endTrial({ totalTime, errors: this._errors, variant: this.config.variant });
+        this._done();
     }
 
-    renderTrial(result) {
-        this._container.innerHTML = `
-      <div class="test-instructions anim-scale-in">
-        <h2 class="test-title" style="color: var(--color-success);">Trail complete</h2>
-        <div class="grid-2" style="margin-top: var(--space-xl);">
-          <div class="card stat-block">
-            <span class="stat-block__value">${(result.totalTime / 1000).toFixed(2)}s</span>
-            <span class="stat-block__label">Completion time</span>
-          </div>
-          <div class="card stat-block">
-            <span class="stat-block__value">${result.errors}</span>
-            <span class="stat-block__label">Errors</span>
-          </div>
-        </div>
-      </div>
-    `;
-    }
-
+    renderTrial()    {}
     processResponse() {}
 }

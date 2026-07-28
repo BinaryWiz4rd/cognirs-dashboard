@@ -1,29 +1,44 @@
+/**
+ * Handles the full session lifecycle.
+ * Stores raw results per test (not pre-summarised),
+ * so ResultsPage can compute any metrics it needs.
+ */
+
 import { eventBus, EVENTS } from '../core/EventBus.js';
 import { stateManager }     from '../core/StateManager.js';
 import { fnirsDevice }      from '../fnirs/FNIRSDevice.js';
 import { createLogger }     from '../core/Logger.js';
-import { DataUtils }        from '../utils/DataUtils.js';
 
 const log = createLogger('SessionManager');
 
-export class SessionManager {
+class SessionManager {
     constructor() {
-        this._session  = null;
+        this._session   = null;
         this._testQueue = [];
         this._currentTest = null;
+        this._container   = null;
+        this._unsubTest   = null;
     }
 
+    /**
+     * Begin a session.
+     * @param {Object} opts
+     * @param {Object}   opts.participant  — participant metadata
+     * @param {BaseTest[]} opts.tests      — ordered array of test instances
+     * @param {HTMLElement} opts.container — DOM element to mount tests into
+     */
     begin({ participant, tests, container }) {
         this._session = {
             id:          crypto.randomUUID(),
             startTime:   new Date().toISOString(),
+            endTime:     null,
             participant,
-            tests:       [],
+            tests:       [],   // { testId, name, results }[]
             fnirs:       null,
         };
 
-        this._testQueue   = [...tests];
-        this._container   = container;
+        this._testQueue = [...tests];
+        this._container = container;
 
         stateManager.setState({ participant, session: this._session });
         fnirsDevice.startRecording();
@@ -41,42 +56,39 @@ export class SessionManager {
 
         this._currentTest = this._testQueue.shift();
 
-        eventBus.once(EVENTS.TEST_ENDED, ({ testId, results }) => {
+        this._unsubTest = eventBus.on(EVENTS.TEST_ENDED, ({ testId, results }) => {
             if (testId !== this._currentTest.id) return;
-            this._session.tests.push({ testId, results });
-            setTimeout(() => this._runNextTest(), 1500);
+
+            if (this._unsubTest) { this._unsubTest(); this._unsubTest = null; }
+
+            this._session.tests.push({
+                testId,
+                name:    this._currentTest.name,
+                results: results ?? [],
+            });
+
+            stateManager.setState({ session: { ...this._session } });
+            log.info(`Test "${testId}" complete — ${results?.length ?? 0} trials`);
+
+            setTimeout(() => this._runNextTest(), 1200);
         });
 
+        this._container.innerHTML = '';
         this._currentTest.mount(this._container);
-        eventBus.emit(EVENTS.TEST_STARTED, { testId: this._currentTest.id });
-        log.info(`Running test: ${this._currentTest.id}`);
+        eventBus.emit(EVENTS.TEST_STARTED, { testId: this._currentTest.id, name: this._currentTest.name });
+        log.info(`Mounting test: ${this._currentTest.id}`);
     }
 
     _end() {
-        const recording = fnirsDevice.stopRecording();
-        this._session.fnirs      = recording;
-        this._session.endTime    = new Date().toISOString();
-        this._session.summary    = this._buildSummary();
+        if (this._unsubTest) { this._unsubTest(); this._unsubTest = null; }
 
-        stateManager.setState({ session: this._session });
+        const recording = fnirsDevice.stopRecording();
+        this._session.fnirs    = recording;
+        this._session.endTime  = new Date().toISOString();
+
+        stateManager.setState({ session: { ...this._session } });
         eventBus.emit(EVENTS.SESSION_ENDED, this._session);
         log.info('Session ended', this._session.id);
-    }
-
-    _buildSummary() {
-        const summary = {};
-        this._session.tests.forEach(({ testId, results }) => {
-            const rts = results.filter(r => !r.timedOut && r.reactionTime).map(r => r.reactionTime);
-            summary[testId] = {
-                totalTrials:  results.length,
-                correct:      results.filter(r => r.correct).length,
-                meanRT:       DataUtils.mean(rts),
-                stdRT:        DataUtils.std(rts),
-                medianRT:     DataUtils.median(rts),
-                accuracy:     results.length ? results.filter(r => r.correct).length / results.length : 0,
-            };
-        });
-        return summary;
     }
 
     getSession() { return this._session; }
