@@ -11,7 +11,6 @@ const COLORS = [
     { name: 'GREEN',  css: 'var(--stroop-green)',  bg: '#eaf3de', border: '#97c459' },
     { name: 'YELLOW', css: 'var(--stroop-yellow)', bg: '#faeeda', border: '#ef9f27' },
     { name: 'PURPLE', css: 'var(--stroop-purple)', bg: '#eeedfe', border: '#afa9ec' },
-    { name: 'ORANGE', css: 'var(--stroop-orange)', bg: '#faece7', border: '#f0997b' },
 ];
 
 const DEFAULT_CONFIG = {
