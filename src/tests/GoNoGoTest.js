@@ -5,6 +5,11 @@
  * Go trials  (80%): press Space when filled circle appears then fast response
  * No-Go trials (20%): withhold press when outline circle appears then inhibition
  *
+ * Timing (per Rubia 2005):
+ * stimMs      = ...  — circle visible
+ * responseMs  = ...  — response window AFTER circle disappears
+ * Total trial = stimMs + responseMs + jittered ITI
+ *
  * The key ADHD measure is commission errors on No-Go trials
  * (failing to inhibit) and mean RT on Go trials.
  *
@@ -17,7 +22,8 @@ import { SeededRandom } from '../utils/Random.js';
 const DEFAULT_CONFIG = {
     trials:     60,
     goRatio:    0.80,
-    stimMs:     250,    // stimulus display time (Rubia 2005)
+    stimMs:     500,    // stimulus display time
+    responseMs:  1000,    // response window after circle disappears
     minIsiMs:   800,
     maxIsiMs:   1400,
     seed:       31,
@@ -31,6 +37,7 @@ export class GoNoGoTest extends BaseTest {
         this._sequence  = [];
         this._keyFn     = null;
         this._stimTimer = null;
+        this._respTimer  = null;
         this._isiTimer  = null;
         this._phase     = 'idle';
         this._responded = false;
@@ -159,24 +166,35 @@ export class GoNoGoTest extends BaseTest {
         this._renderStimulus(trial);
         this._startTrial(trial);
 
-        if (trial.isGo) {
-            this._attachKey(this._makeGoHandler(trial));
-        }
+        this._attachKey(trial.isGo
+            ? this._makeGoHandler(trial)
+            : this._makeNoGoHandler(trial)
+        );
 
-        this._stimTimer = setTimeout(() => this._onStimulusEnd(trial), this.config.stimMs + 800);
+        this._stimTimer = setTimeout(() => {
+            const circle = document.getElementById('gng-circle');
+            if (circle && this._phase === 'stim') {
+                circle.className = 'gng-circle gng-circle--blank';
+            }
+        }, this.config.stimMs);
+
+        this._respTimer = setTimeout(
+            () => this._onTrialTimeout(trial),
+            this.config.stimMs + this.config.responseMs
+        );
     }
 
-    _onStimulusEnd(trial) {
+    _onTrialTimeout(trial) {
         if (this._phase !== 'stim') return;
         this._detachKey();
         this._phase = 'iti';
 
         if (!this._responded) {
             this._endTrial({
-                correct:         !trial.isGo,
-                isGo:            trial.isGo,
-                commission:      false,
-                omission:        trial.isGo,
+                correct:          !trial.isGo,
+                isGo:             trial.isGo,
+                commission:       false,
+                omission:         trial.isGo,
                 correctRejection: !trial.isGo,
             });
         }
@@ -193,23 +211,57 @@ export class GoNoGoTest extends BaseTest {
 
             this._responded = true;
             clearTimeout(this._stimTimer);
+            clearTimeout(this._respTimer);
             this._detachKey();
 
             this._endTrial({
-                correct:         true,
-                isGo:            true,
-                commission:      false,
-                omission:        false,
+                correct:          true,
+                isGo:             true,
+                commission:       false,
+                omission:         false,
                 correctRejection: false,
             });
 
             const circle = document.getElementById('gng-circle');
-            if (circle) circle.classList.add('gng-circle--pressed');
+            if (circle) {
+                circle.className = 'gng-circle gng-circle--pressed';
+            }
 
             setTimeout(() => {
                 this._trialIndex++;
                 this._startITI();
-            }, 300);
+            }, 350);
+        };
+    }
+
+    _makeNoGoHandler(trial) {
+        return (e) => {
+            if (e.code !== 'Space') return;
+            e.preventDefault();
+            if (this._phase !== 'stim' || this._responded) return;
+
+            this._responded = true;
+            clearTimeout(this._stimTimer);
+            clearTimeout(this._respTimer);
+            this._detachKey();
+
+            this._endTrial({
+                correct:          false,
+                isGo:             false,
+                commission:       true,
+                omission:         false,
+                correctRejection: false,
+            });
+
+            const circle = document.getElementById('gng-circle');
+            if (circle) {
+                circle.className = 'gng-circle gng-circle--commission';
+            }
+
+            setTimeout(() => {
+                this._trialIndex++;
+                this._startITI();
+            }, 400);
         };
     }
 
@@ -260,8 +312,10 @@ export class GoNoGoTest extends BaseTest {
 
     _clearTimers() {
         clearTimeout(this._stimTimer);
+        clearTimeout(this._respTimer);
         clearTimeout(this._isiTimer);
         this._stimTimer = null;
+        this._respTimer = null;
         this._isiTimer  = null;
     }
 }
