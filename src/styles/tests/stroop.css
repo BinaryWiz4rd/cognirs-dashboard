@@ -1,0 +1,105 @@
+.stroop-test-arena {
+    flex-direction: column;
+    gap: var(--space-xl);
+    padding: var(--space-xl);
+}
+
+.stroop-word-display {
+    width: 100%;
+    max-width: 480px;
+    min-height: 130px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.stroop-word-text {
+    font-size: 3.2rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    user-select: none;
+}
+
+.stroop-btn-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-sm);
+    width: 100%;
+    max-width: 560px;
+}
+
+.stroop-choice-btn {
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 13px 8px;
+    border-radius: var(--radius-md);
+    border: 2px solid;
+    cursor: pointer;
+    background: var(--color-surface);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    letter-spacing: 0.04em;
+}
+
+.stroop-choice-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.stroop-choice-btn:active:not(:disabled) { transform: scale(0.97); }
+.stroop-choice-btn:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
+
+.demo-stroop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-xl);
+    width: 100%;
+}
+
+.demo-stroop__display {
+    width: 100%;
+    max-width: 380px;
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    transition: border-color 0.25s, background 0.25s;
+}
+
+.demo-stroop__word {
+    font-size: 2.6rem;
+    font-weight: 600;
+    user-select: none;
+}
+
+.demo-stroop__buttons {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-xs);
+    width: 100%;
+    max-width: 440px;
+}
+
+.demo-stroop__btn {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 10px 6px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid;
+    cursor: default;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.demo-stroop__btn--selected {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: var(--shadow-md);
+}
