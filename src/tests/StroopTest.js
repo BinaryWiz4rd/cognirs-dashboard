@@ -34,7 +34,6 @@ export class StroopTest extends BaseTest {
         super.unmount();
     }
 
-
     _renderInstructions() {
         this._buildInstructionShell({
             title:    'Stroop Color–Word Test',
@@ -48,17 +47,18 @@ export class StroopTest extends BaseTest {
         });
     }
 
-
     _renderDemo() {
         this._buildDemoShell('Stroop — live preview');
         const stage = document.getElementById('demo-stage');
 
         const demoTrials = [
-            { word: 'BLUE',   inkColor: COLORS[1], congruent: true  },
-            { word: 'RED',    inkColor: COLORS[2], congruent: false }, // word=RED, ink=GREEN
-            { word: 'GREEN',  inkColor: COLORS[3], congruent: false }, // word=GREEN, ink=YELLOW
-            { word: 'PURPLE', inkColor: COLORS[4], congruent: true  },
+            { word: 'BLUE',   inkColor: COLORS[1] },
+            { word: 'RED',    inkColor: COLORS[2] },
+            { word: 'GREEN',  inkColor: COLORS[3] },
+            { word: 'PURPLE', inkColor: COLORS[4] },
         ];
+
+        const simulatedAnswer = [1, 0, 3, 4];
 
         stage.innerHTML = `
       <div class="demo-stroop">
@@ -67,8 +67,7 @@ export class StroopTest extends BaseTest {
         </div>
         <div class="demo-stroop__buttons">
           ${COLORS.map(c => `
-            <button class="demo-stroop__btn" id="demo-stroop-${c.name}"
-              style="color:${c.css};border-color:${c.border};background:${c.bg};">
+            <button class="demo-stroop__btn" id="demo-stroop-${c.name}">
               ${c.name}
             </button>
           `).join('')}
@@ -77,39 +76,47 @@ export class StroopTest extends BaseTest {
     `;
 
         let cur = 0;
-        const PERIOD = 2200;
+        const PERIOD = 2400;
 
         const runFrame = () => {
             const display = document.getElementById('demo-stroop-display');
             const wordEl  = document.getElementById('demo-stroop-word');
             if (!display || !wordEl) return;
 
-            const trial = demoTrials[cur % demoTrials.length];
-            wordEl.textContent  = trial.word;
-            wordEl.style.color  = trial.inkColor.css;
-            display.style.background   = 'var(--color-surface)';
-            display.style.borderColor  = 'var(--color-border)';
+            const trial   = demoTrials[cur % demoTrials.length];
+            const picked  = COLORS[simulatedAnswer[cur % simulatedAnswer.length]];
+            const correct = picked.name === trial.inkColor.name;
+
+            display.style.background  = 'var(--color-surface)';
+            display.style.borderColor = 'var(--color-border)';
+            COLORS.forEach(c => {
+                const btn = document.getElementById(`demo-stroop-${c.name}`);
+                if (btn) btn.classList.remove('demo-stroop__btn--selected');
+            });
+
+            wordEl.textContent = trial.word;
+            wordEl.style.color = trial.inkColor.css;
 
             this._demoTimeout(() => {
-                const correctBtn = document.getElementById(`demo-stroop-${trial.inkColor.name}`);
-                if (correctBtn) correctBtn.classList.add('demo-stroop__btn--selected');
-                display.style.background  = trial.inkColor.bg;
-                display.style.borderColor = trial.inkColor.border;
+                const pickedBtn = document.getElementById(`demo-stroop-${picked.name}`);
+                if (pickedBtn) pickedBtn.classList.add('demo-stroop__btn--selected');
+
+                display.style.borderColor = correct ? 'var(--color-success)' : 'var(--color-danger)';
+                display.style.background  = correct ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
 
                 this._demoTimeout(() => {
-                    if (correctBtn) correctBtn.classList.remove('demo-stroop__btn--selected');
-                    wordEl.textContent = '';
+                    if (pickedBtn) pickedBtn.classList.remove('demo-stroop__btn--selected');
+                    wordEl.textContent        = '';
                     display.style.background  = 'var(--color-surface)';
                     display.style.borderColor = 'var(--color-border)';
                     cur++;
-                }, 500);
-            }, 1600);
+                }, 600);
+            }, 1400);
         };
 
         runFrame();
         this._demoInterval(runFrame, PERIOD);
     }
-
 
     setup() {
         this._trials = this._generateTrials();
@@ -155,8 +162,7 @@ export class StroopTest extends BaseTest {
           </div>
           <div class="stroop-btn-grid">
             ${COLORS.map(c => `
-              <button class="stroop-choice-btn" data-color="${c.name}"
-                style="color:${c.css};border-color:${c.border};background:${c.bg};">
+              <button class="stroop-choice-btn" data-color="${c.name}">
                 ${c.name}
               </button>
             `).join('')}
@@ -185,11 +191,18 @@ export class StroopTest extends BaseTest {
         this._endTrial({ response, correct, timedOut, congruent: trial.congruent });
 
         const display = document.getElementById('stroop-display');
-        if (display && !timedOut) {
+        if (display) {
             display.style.borderColor = correct ? 'var(--color-success)' : 'var(--color-danger)';
             display.style.background  = correct ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
         }
-        this._container.querySelectorAll('.stroop-choice-btn').forEach(b => (b.disabled = true));
+
+        this._container.querySelectorAll('.stroop-choice-btn').forEach(b => {
+            b.disabled = true;
+            if (!timedOut && b.dataset.color === response) {
+                b.style.background   = correct ? 'var(--color-success-bg)' : 'var(--color-danger-bg)';
+                b.style.borderColor  = correct ? 'var(--color-success)'    : 'var(--color-danger)';
+            }
+        });
 
         setTimeout(() => this._nextTrial(), this.config.itiMs);
     }

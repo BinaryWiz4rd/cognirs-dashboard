@@ -38,14 +38,17 @@
     font-weight: 600;
     padding: 13px 8px;
     border-radius: var(--radius-md);
-    border: 2px solid;
+    border: 1.5px solid var(--color-border);
     cursor: pointer;
-    background: var(--color-surface);
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease;
     letter-spacing: 0.04em;
 }
 
 .stroop-choice-btn:hover:not(:disabled) {
+    background: var(--color-primary-xlt);
+    border-color: var(--color-primary);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
 }
@@ -94,12 +97,16 @@
     font-weight: 600;
     padding: 10px 6px;
     border-radius: var(--radius-sm);
-    border: 1.5px solid;
+    border: 1.5px solid var(--color-border);
+    background: var(--color-surface-alt);
+    color: var(--color-text);
     cursor: default;
     transition: transform 0.15s, box-shadow 0.15s;
 }
 
 .demo-stroop__btn--selected {
+    background: var(--color-primary-xlt);
+    border-color: var(--color-primary);
     transform: translateY(-2px) scale(1.04);
     box-shadow: var(--shadow-md);
 }
