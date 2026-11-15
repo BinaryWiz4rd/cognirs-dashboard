@@ -1,15 +1,16 @@
 /**
- * COGNIRS — FNIRSAdapter
- * Low-level WebSerial connection to the fNIRS device.
- * Falls back to simulation mode if no device is available.
+ * Hardware abstraction for WebSerial fNIRS devices with a built-in 50 Hz simulator fallback.
+ * Anchors incoming sample frames to the monotonic performance.now() clock.
  */
 
+import { FNIRSParser }  from './FNIRSParser.js';
 import { createLogger } from '../core/Logger.js';
-import { FNIRSParser } from './FNIRSParser.js';
 
 const log = createLogger('FNIRSAdapter');
 
-const SIMULATE_INTERVAL_MS = 20; // 50 Hz
+const SIM_SAMPLE_RATE_HZ = 50;
+const SIM_INTERVAL_MS    = 1000 / SIM_SAMPLE_RATE_HZ;
+const NUM_CHANNELS       = 8;
 
 export class FNIRSAdapter {
     constructor() {
@@ -18,105 +19,139 @@ export class FNIRSAdapter {
         this._parser      = new FNIRSParser();
         this._onData      = null;
         this._onError     = null;
-        this._simInterval = null;
-        this._simTime     = 0;
+        this._onClose     = null;
+        this._isConnected = false;
         this._isSimulated = false;
+        this._simTimer    = null;
+        this._simTime     = 0;
     }
 
+    get isConnected() { return this._isConnected; }
     get isSimulated() { return this._isSimulated; }
 
-    /**
-     * Request and open a serial port.
-     * @param {Object} options
-     * @param {Function} options.onData  (samples: FNIRSSample[]) => void
-     * @param {Function} options.onError (error: Error) => void
-     */
-    async connect({ onData, onError }) {
+    async connect({ baudRate = 115200, onData, onError, onClose } = {}) {
         this._onData  = onData;
         this._onError = onError;
+        this._onClose = onClose;
+        this._parser  = new FNIRSParser();
 
         if (!('serial' in navigator)) {
-            log.warn('WebSerial not supported — entering simulation mode');
-            this._startSimulation();
-            return { simulated: true };
+            log.warn('WebSerial API not supported in this browser — starting 50 Hz simulator');
+            return this._startSimulation();
         }
 
         try {
             this._port = await navigator.serial.requestPort();
-            await this._port.open({ baudRate: 115200 });
-            log.info('Serial port opened');
+            await this._port.open({ baudRate });
+
+            this._isConnected = true;
+            this._isSimulated = false;
             this._readLoop();
-            return { simulated: false };
+
+            log.info(`Connected to fNIRS device via WebSerial (baudRate=${baudRate})`);
+            return { success: true, simulated: false };
         } catch (err) {
-            log.warn('Serial port failed, falling back to simulation', err);
-            this._startSimulation();
-            return { simulated: true };
+            log.warn('WebSerial connection unavailable or cancelled — falling back to 50 Hz simulator', err);
+            this._port = null;
+            return this._startSimulation();
         }
     }
 
     async disconnect() {
-        if (this._isSimulated) {
-            this._stopSimulation();
-            return;
+        const wasConnected = this._isConnected;
+        this._isConnected  = false;
+        this._isSimulated  = false;
+
+        if (this._simTimer) {
+            clearInterval(this._simTimer);
+            this._simTimer = null;
         }
 
-        try {
-            this._reader?.cancel();
+        if (this._reader) {
+            try { await this._reader.cancel(); } catch { /* ignore cancellation errors */ }
+            try { this._reader.releaseLock(); } catch { /* ignore lock release errors */ }
             this._reader = null;
-            await this._port?.close();
+        }
+
+        if (this._port) {
+            try { await this._port.close(); } catch { /* ignore port close errors */ }
             this._port = null;
-            log.info('Serial port closed');
-        } catch (err) {
-            log.error('Error closing port', err);
+        }
+
+        this._simTime = 0;
+        this._parser  = new FNIRSParser();
+
+        if (wasConnected) {
+            log.info('fNIRS adapter disconnected');
         }
     }
 
     async _readLoop() {
+        if (!this._port?.readable) return;
+
+        const decoder = new TextDecoder();
+        this._reader  = this._port.readable.getReader();
+
         try {
-            this._reader = this._port.readable.getReader();
-            while (true) {
+            while (this._isConnected) {
                 const { value, done } = await this._reader.read();
                 if (done) break;
-                const samples = this._parser.feed(value);
-                if (samples.length) this._onData?.(samples);
+
+                const receivedAt = performance.now();
+                const textChunk  = decoder.decode(value, { stream: true });
+                const samples    = this._parser.feed(textChunk).map(sample => ({
+                    ...sample,
+                    receivedAt,
+                }));
+
+                if (samples.length > 0) {
+                    this._onData?.(samples);
+                }
             }
         } catch (err) {
-            if (err.name !== 'CancelError') {
-                log.error('Read loop error', err);
+            if (this._isConnected) {
+                log.error('WebSerial stream read error', err);
                 this._onError?.(err);
             }
         } finally {
-            this._reader?.releaseLock();
+            try { this._reader?.releaseLock(); } catch { /* ignore */ }
+            this._reader = null;
+
+            if (this._isConnected) {
+                this._isConnected = false;
+                this._onClose?.({ code: 1006, reason: 'WebSerial stream closed unexpectedly' });
+            }
         }
     }
 
     _startSimulation() {
+        this._isConnected = true;
         this._isSimulated = true;
         this._simTime     = 0;
 
-        this._simInterval = setInterval(() => {
-            this._simTime += SIMULATE_INTERVAL_MS;
+        this._simTimer = setInterval(() => {
+            if (!this._isConnected) return;
             const samples = this._generateSimSamples();
             this._onData?.(samples);
-        }, SIMULATE_INTERVAL_MS);
+        }, SIM_INTERVAL_MS);
 
-        log.info('Simulation mode active at 50 Hz');
-    }
-
-    _stopSimulation() {
-        clearInterval(this._simInterval);
-        this._simInterval = null;
-        this._isSimulated = false;
-        log.info('Simulation stopped');
+        log.info('fNIRS 50 Hz simulation stream started');
+        return { success: true, simulated: true };
     }
 
     _generateSimSamples() {
-        const t = this._simTime / 1000;
-        return Array.from({ length: 8 }, (_, ch) => ({
-            timestamp: this._simTime,
-            hbo: 0.5 + 0.15 * Math.sin(2 * Math.PI * 0.1 * t + ch * 0.4) + (Math.random() - 0.5) * 0.05,
-            hbr: 0.3 - 0.1  * Math.sin(2 * Math.PI * 0.1 * t + ch * 0.4) + (Math.random() - 0.5) * 0.03,
-            channel: ch,
+        const t          = this._simTime / 1000;
+        const receivedAt = performance.now();
+
+        const samples = Array.from({ length: NUM_CHANNELS }, (_, ch) => ({
+            timestamp:  this._simTime,
+            receivedAt,
+            channel:    ch,
+            hbo:        0.5 + 0.15 * Math.sin(2 * Math.PI * 0.1 * t + ch * 0.4) + (Math.random() - 0.5) * 0.05,
+            hbr:        0.3 - 0.10 * Math.sin(2 * Math.PI * 0.1 * t + ch * 0.4) + (Math.random() - 0.5) * 0.03,
         }));
+
+        this._simTime += SIM_INTERVAL_MS;
+        return samples;
     }
 }

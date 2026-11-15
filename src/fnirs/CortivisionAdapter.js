@@ -1,12 +1,7 @@
 /**
- * COGNIRS — CortivisionAdapter
- * Real-time connection to Cortivision devices (e.g., PHOTON Cap, Spectrum C23)
- * via a WebSocket stream interface. Interlaces with data streamed from CortiView 2
- * or an LSL (Lab Streaming Layer) WebSocket gateway.
- * 
- * ogolny tutorial
- * https://www.youtube.com/playlist?list=PL3sMS3px894nJzFOOY1pambYiYq_BkrKO
- * */
+ * WebSocket client adapter for Cortivision PHOTON Cap / CortiView 2 real-time streams.
+ * Captures monotonic arrival timestamps (performance.now()) for exact event synchronization.
+ */
 
 import { createLogger } from '../core/Logger.js';
 
@@ -17,6 +12,7 @@ export class CortivisionAdapter {
         this._ws          = null;
         this._onData      = null;
         this._onError     = null;
+        this._onClose     = null;
         this._isConnected = false;
         this._url         = null;
     }
@@ -25,16 +21,10 @@ export class CortivisionAdapter {
     get isSimulated() { return false; }
     get deviceUrl()   { return this._url; }
 
-    /**
-     * Connect to the Cortivision WebSocket server/bridge.
-     * @param {Object} options
-     * @param {string} options.url       - WebSocket endpoint URL (default: CortiView/LSL bridge local port)
-     * @param {Function} options.onData  - (samples: FNIRSSample[]) => void
-     * @param {Function} options.onError - (error: Error) => void
-     */
-    async connect({ url = 'ws://127.0.0.1:5732', onData, onError }) {
+    async connect({ url = 'ws://127.0.0.1:5732', onData, onError, onClose } = {}) {
         this._onData  = onData;
         this._onError = onError;
+        this._onClose = onClose;
         this._url     = url;
 
         log.info(`Connecting to Cortivision real-time stream at ${url}...`);
@@ -68,8 +58,12 @@ export class CortivisionAdapter {
             };
 
             this._ws.onclose = (event) => {
-                log.info(`Cortivision data connection closed (Code: ${event.code})`);
+                const wasConnected = this._isConnected;
+                log.info(`Cortivision data connection closed (code=${event.code})`);
                 this._cleanup();
+                if (wasConnected) {
+                    this._onClose?.(event);
+                }
             };
 
             this._ws.onmessage = (event) => {
@@ -81,23 +75,24 @@ export class CortivisionAdapter {
     async disconnect() {
         if (this._ws) {
             log.info('Disconnecting Cortivision stream active channel...');
-            this._ws.close(1000, 'User initiated unmount');
+            this._ws.close(1000, 'User initiated disconnect');
         }
         this._cleanup();
     }
 
     _processIncomingStream(rawData) {
         try {
-            const data = JSON.parse(rawData);
+            const receivedAt = performance.now();
+            const data       = JSON.parse(rawData);
             let normalizedSamples = [];
 
             if (Array.isArray(data)) {
-                normalizedSamples = data.map(s => this._normalizeFrame(s)).filter(Boolean);
+                normalizedSamples = data.map(s => this._normalizeFrame(s, receivedAt)).filter(Boolean);
             } else if (data && typeof data === 'object') {
-                if (data.samples && Array.isArray(data.samples)) {
-                    normalizedSamples = data.samples.map(s => this._normalizeFrame(s)).filter(Boolean);
+                if (Array.isArray(data.samples)) {
+                    normalizedSamples = data.samples.map(s => this._normalizeFrame(s, receivedAt)).filter(Boolean);
                 } else {
-                    const sample = this._normalizeFrame(data);
+                    const sample = this._normalizeFrame(data, receivedAt);
                     if (sample) normalizedSamples.push(sample);
                 }
             }
@@ -106,13 +101,13 @@ export class CortivisionAdapter {
                 this._onData?.(normalizedSamples);
             }
         } catch (err) {
-            log.debug('Skipping non-fNIRS/malformed metadata message packet', err);
+            log.debug('Skipping non-fNIRS or malformed metadata message packet', err);
         }
     }
 
-    _normalizeFrame(item) {
-        const timestamp = item.timestamp ?? performance.now();
-        const ch        = item.channel ?? item.channelIndex ?? 0;
+    _normalizeFrame(item, receivedAt = performance.now()) {
+        const rawTs = item.timestamp !== undefined ? Number(item.timestamp) : null;
+        const ch    = item.channel ?? item.channelIndex ?? 0;
 
         const hbo = item.hbo !== undefined ? item.hbo : (item.oxy !== undefined ? item.oxy : null);
         const hbr = item.hbr !== undefined ? item.hbr : (item.deoxy !== undefined ? item.deoxy : null);
@@ -120,10 +115,11 @@ export class CortivisionAdapter {
         if (hbo === null || hbr === null) return null;
 
         return {
-            timestamp: Math.round(timestamp),
-            channel: parseInt(ch, 10),
-            hbo: parseFloat(hbo),
-            hbr: parseFloat(hbr)
+            timestamp:  rawTs !== null && !Number.isNaN(rawTs) ? Math.round(rawTs) : Math.round(receivedAt),
+            receivedAt,
+            channel:    parseInt(ch, 10),
+            hbo:        parseFloat(hbo),
+            hbr:        parseFloat(hbr),
         };
     }
 

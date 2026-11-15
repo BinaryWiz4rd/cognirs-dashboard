@@ -1,19 +1,17 @@
 /**
- * Exports session data in formats suitable for further probably Python analysis.
-**/
+ * Serializes completed cognitive sessions and synchronized fNIRS streams
+ * into downloadable JSON and CSV files.
+ */
+
+import { toast } from '../ui/components/Toast.js';
 
 export const SessionExporter = {
 
-    /** Full session as JSON — includes all raw results and fNIRS (WIP) */
     toJSON(session) {
         const json = JSON.stringify(session, null, 2);
         _download(`cognirs_session_${session.id.slice(0, 8)}.json`, json, 'application/json');
     },
 
-    /**
-     * Behavioral results as flat CSV.
-     * One row per trial across all tests.
-     */
     toCSV(session) {
         const rows = [[
             'sessionId', 'participantId', 'group', 'sex', 'age',
@@ -37,7 +35,7 @@ export const SessionExporter = {
                     name,
                     i,
                     _bool(r.correct),
-                    Math.round(r.reactionTime ?? -1),
+                    r.reactionTime != null ? +r.reactionTime.toFixed(2) : -1,
                     _bool(r.timedOut),
                     _bool(r.isTarget),
                     _bool(r.isGo),
@@ -52,7 +50,7 @@ export const SessionExporter = {
                     r.key ?? '',
                     r.side ?? '',
                     r.letter ?? '',
-                ]);
+                ].map(_escapeCSV));
             });
         });
 
@@ -63,29 +61,38 @@ export const SessionExporter = {
         );
     },
 
-    /**
-     * WIP
-     * fNIRS samples as CSV.
-     * Columns: relativeTime_ms, channel, hbo, hbr
-     * Markers are embedded as comment rows: # MARKER,type,relativeTime,payload
-     */
     toFNIRSCSV(session) {
-        if (!session.fnirs?.samples?.length) return;
+        if (!session.fnirs?.samples?.length) {
+            toast('No fNIRS samples recorded in this session', 'warning');
+            return;
+        }
 
-        const rows = ['relativeTime_ms,channel,hbo,hbr'];
+        const rows = ['relativeTime_ms,deviceTimestamp_ms,channel,hbo,hbr'];
 
         const events = [
-            ...session.fnirs.samples.map(s => ({ type: 'sample', t: s.timestamp, data: s })),
-            ...session.fnirs.markers.map(m => ({ type: 'marker', t: m.relativeTime, data: m })),
+            ...session.fnirs.samples.map(s => ({
+                type: 'sample',
+                t:    s.relativeTime ?? s.timestamp ?? 0,
+                data: s,
+            })),
+            ...session.fnirs.markers.map(m => ({
+                type: 'marker',
+                t:    m.relativeTime ?? 0,
+                data: m,
+            })),
         ].sort((a, b) => a.t - b.t);
 
         events.forEach(ev => {
             if (ev.type === 'sample') {
                 const s = ev.data;
-                rows.push(`${s.timestamp},${s.channel},${s.hbo.toFixed(6)},${s.hbr.toFixed(6)}`);
+                rows.push(
+                    `${ev.t.toFixed(3)},${s.deviceTimestamp ?? ''},${s.channel},${s.hbo.toFixed(6)},${s.hbr.toFixed(6)}`
+                );
             } else {
                 const m = ev.data;
-                rows.push(`# MARKER,${m.type},${m.relativeTime},${JSON.stringify(m.payload ?? '')}`);
+                rows.push(
+                    `# MARKER,${_escapeCSV(m.type)},${ev.t.toFixed(3)},${_escapeCSV(JSON.stringify(m.payload ?? ''))}`
+                );
             }
         });
 
@@ -100,6 +107,14 @@ export const SessionExporter = {
 function _bool(val) {
     if (val === undefined || val === null) return '';
     return val ? 1 : 0;
+}
+
+function _escapeCSV(val) {
+    const str = String(val ?? '');
+    if (/[",\n\r]/.test(str)) {
+        return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
 }
 
 function _download(filename, content, mimeType) {
