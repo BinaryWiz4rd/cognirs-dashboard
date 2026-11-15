@@ -1,16 +1,6 @@
 /**
- * The CPT measures sustained attention over time.
- * The defining ADHD signature is a degradation of accuracy / RT
- * across the test duration (vigilance decrement).
- *
- * CPT-AX variant (Rosvold et al. 1956 (to jest bardziej do brain damage, ale koncepty sa opisane);
- *  Conners CPT-3 2014 (standard dzisiejszych testow uwagi dla osob z ADHD)):
- *   - A continuous stream of letters appears
- *   - Target: press Space when 'X' appears immediately after 'A'
- *   - All other letters: no response
- *
- * Outcome measures split into thirds (early / middle / late) to
- * quantify the vigilance decrement characteristic of ADHD.
+ * Continuous Performance Test (CPT-AX variant).
+ * Target: press Space when 'X' appears immediately after 'A'.
  */
 
 import { BaseTest }     from './BaseTest.js';
@@ -20,11 +10,11 @@ const LETTERS = ['B','C','D','F','G','H','K','L','M','N',
     'P','Q','R','S','T','V','W','Y','Z'];
 
 const DEFAULT_CONFIG = {
-    trials:        100,    // total stimuli
-    axRatio:       0.22,   // ~22% AX (target) sequences
-    stimMs:        500,    // stimulus visible
-    isiMs:         1000,   // blank between stimuli
-    seed:          53,
+    trials:  100,   // total stimuli
+    axRatio: 0.22,  // ~22% AX (target) sequences
+    stimMs:  500,   // stimulus visible duration
+    isiMs:   1000,  // blank interval after stimulus (response window stays open)
+    seed:    53,
 };
 
 export class ContinuousPerformanceTest extends BaseTest {
@@ -38,10 +28,10 @@ export class ContinuousPerformanceTest extends BaseTest {
         this._isiTimer  = null;
         this._phase     = 'idle';
         this._responded = false;
-        this._prevLetter = null;
     }
 
     unmount() {
+        this._phase = 'idle';
         this._clearTimers();
         this._detachKey();
         super.unmount();
@@ -56,7 +46,7 @@ export class ContinuousPerformanceTest extends BaseTest {
                 'Seeing A alone: do not press',
                 'Seeing X without A before it: do not press',
                 'Only A followed immediately by X: press Space',
-                `${this.config.trials} letters total · approximately 4–5 minutes`,
+                `${this.config.trials} letters total · approximately 2.5 minutes`,
             ],
             keysHtml: `
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -133,7 +123,7 @@ export class ContinuousPerformanceTest extends BaseTest {
             this._demoTimeout(() => {
                 if (item.isTarget) card.classList.add('demo-cpt__card--hit');
                 this._demoTimeout(() => {
-                    card.classList.remove('demo-cpt__card--show', 'demo-cpt__card--hit', 'demo-cpt__card--a');
+                    card.className = 'demo-cpt__card';
                     letter.textContent = '';
                     cur = (cur + 1) % demoSeq.length;
                 }, 300);
@@ -145,42 +135,61 @@ export class ContinuousPerformanceTest extends BaseTest {
     }
 
     setup() {
-        this._sequence   = this._generateSequence();
-        this._prevLetter = null;
-        this._phase      = 'idle';
+        this._sequence = this._generateSequence();
+        this._phase    = 'idle';
         this._nextStimulus();
     }
 
     _generateSequence() {
-        const total    = this.config.trials;
-        const nTargets = Math.round(total * this.config.axRatio);
-        const seq      = [];
+        const total     = this.config.trials;
+        const nTargets  = Math.round(total * this.config.axRatio);
+        const remaining = Math.max(0, total - 2 * nTargets);
+        const nCueLures = Math.min(Math.round(total * 0.08), Math.floor(remaining / 2));
+        const nXLures   = Math.min(Math.round(total * 0.08), remaining - nCueLures);
+        const nFillers  = Math.max(0, remaining - nCueLures - nXLures);
+
+        const fillerPool = LETTERS.filter(l => l !== 'A' && l !== 'X');
+        const units      = [];
 
         for (let i = 0; i < nTargets; i++) {
-            seq.push({ letter: 'A', isTarget: false });
-            seq.push({ letter: 'X', isTarget: true  });
+            units.push([
+                { letter: 'A', isTarget: false },
+                { letter: 'X', isTarget: true  },
+            ]);
         }
 
-        const filler = LETTERS.filter(l => l !== 'A' && l !== 'X');
-        const nFill  = total - seq.length;
-        for (let i = 0; i < nFill; i++) {
-            seq.push({ letter: this._rng.pick(filler), isTarget: false });
+        for (let i = 0; i < nCueLures; i++) {
+            units.push([{ letter: 'A', isTarget: false }]);
         }
 
-        const shuffled = this._rng.shuffle(seq);
+        for (let i = 0; i < nXLures; i++) {
+            units.push([{ letter: 'X', isTarget: false }]);
+        }
 
-        for (let i = 1; i < shuffled.length; i++) {
-            if (shuffled[i].letter === 'X' && shuffled[i - 1].letter === 'A' && !shuffled[i].isTarget) {
-                for (let j = i + 1; j < shuffled.length; j++) {
-                    if (!['A','X'].includes(shuffled[j].letter)) {
-                        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        for (let i = 0; i < nFillers; i++) {
+            units.push([{ letter: this._rng.pick(fillerPool), isTarget: false }]);
+        }
+
+        const seq = this._rng.shuffle(units).flat();
+
+        // Prevent accidental standalone 'A' followed by standalone 'X'
+        for (let i = 1; i < seq.length; i++) {
+            if (seq[i].letter === 'X' && seq[i - 1].letter === 'A' && !seq[i].isTarget) {
+                for (let j = 0; j < seq.length; j++) {
+                    if (
+                        !seq[j].isTarget &&
+                        seq[j].letter !== 'A' &&
+                        seq[j].letter !== 'X' &&
+                        (j === 0 || seq[j - 1].letter !== 'A')
+                    ) {
+                        [seq[i], seq[j]] = [seq[j], seq[i]];
                         break;
                     }
                 }
             }
         }
 
-        return shuffled;
+        return seq;
     }
 
     _nextStimulus() {
@@ -199,37 +208,47 @@ export class ContinuousPerformanceTest extends BaseTest {
         this._startTrial(stimulus);
         this._attachKey(this._makeResponseHandler(stimulus));
 
-        this._stimTimer = setTimeout(() => this._onStimulusEnd(stimulus), this.config.stimMs);
+        // Hide the letter after stimMs, but keep the response listener active through isiMs
+        this._stimTimer = setTimeout(() => this._onStimulusHide(), this.config.stimMs);
+
+        // Advance to the next trial after the full stimMs + isiMs window
+        this._isiTimer = setTimeout(
+            () => this._onTrialComplete(stimulus),
+            this.config.stimMs + this.config.isiMs
+        );
     }
 
-    _onStimulusEnd(stimulus) {
+    _onStimulusHide() {
         if (this._phase !== 'stim') return;
         this._phase = 'isi';
+        this._renderISI();
+    }
+
+    _onTrialComplete(stimulus) {
+        if (this._phase !== 'stim' && this._phase !== 'isi') return;
         this._detachKey();
 
+        // Only record an unresponded outcome if the participant did not press Space.
+        // Note: BaseTest._endTrial() increments this._trialIndex automatically.
         if (!this._responded) {
             this._endTrial({
-                correct:      !stimulus.isTarget,
-                isTarget:     stimulus.isTarget,
-                miss:         stimulus.isTarget,
-                falseAlarm:   false,
-                letter:       stimulus.letter,
+                correct:    !stimulus.isTarget,
+                isTarget:   stimulus.isTarget,
+                hit:        false,
+                miss:       stimulus.isTarget,
+                falseAlarm: false,
+                letter:     stimulus.letter,
             });
         }
 
-        this._prevLetter = stimulus.letter;
-        this._renderISI();
-        this._isiTimer = setTimeout(() => {
-            this._trialIndex++;
-            this._nextStimulus();
-        }, this.config.isiMs);
+        this._nextStimulus();
     }
 
     _makeResponseHandler(stimulus) {
         return (e) => {
             if (e.code !== 'Space') return;
             e.preventDefault();
-            if (this._phase !== 'stim' || this._responded) return;
+            if ((this._phase !== 'stim' && this._phase !== 'isi') || this._responded) return;
 
             this._responded = true;
             this._detachKey();
@@ -238,13 +257,16 @@ export class ContinuousPerformanceTest extends BaseTest {
             this._endTrial({
                 correct,
                 isTarget:   stimulus.isTarget,
+                hit:        correct,
                 miss:       false,
                 falseAlarm: !stimulus.isTarget,
                 letter:     stimulus.letter,
             });
 
             const card = document.getElementById('cpt-card');
-            if (card) card.classList.add(correct ? 'cpt-card--hit' : 'cpt-card--miss');
+            if (card) {
+                card.classList.add(correct ? 'cpt-card--hit' : 'cpt-card--miss');
+            }
         };
     }
 
@@ -258,7 +280,7 @@ export class ContinuousPerformanceTest extends BaseTest {
           </div>
         </div>
         <div class="test-arena cpt-arena">
-          <div class="cpt-card cpt-card--show ${stimulus.letter === 'A' ? 'cpt-card--a' : ''}" id="cpt-card">
+          <div class="cpt-card cpt-card--show" id="cpt-card">
             <span class="cpt-letter">${stimulus.letter}</span>
           </div>
         </div>
@@ -291,5 +313,7 @@ export class ContinuousPerformanceTest extends BaseTest {
     _clearTimers() {
         clearTimeout(this._stimTimer);
         clearTimeout(this._isiTimer);
+        this._stimTimer = null;
+        this._isiTimer  = null;
     }
 }
