@@ -1,5 +1,6 @@
 /**
- *
+ * Simple & Choice Reaction Time Task with color-only feedback,
+ * key-repeat protection, and anticipatory false-start logging.
  */
 
 import { BaseTest }     from './BaseTest.js';
@@ -17,13 +18,15 @@ const DEFAULT_CONFIG = {
 export class ReactionTimeTest extends BaseTest {
     constructor(config = {}) {
         super('reaction-time', 'Reaction Time Test', { ...DEFAULT_CONFIG, ...config });
-        this._rng          = new SeededRandom(this.config.seed);
-        this._itiTimer     = null;
-        this._stimTimer    = null;
-        this._keyFn        = null;
-        this._phase        = 'idle';
-        this._falseStarts  = 0;
-        this._currentTrial = null;
+        this._rng           = new SeededRandom(this.config.seed);
+        this._itiTimer      = null;
+        this._stimTimer     = null;
+        this._feedbackTimer = null;
+        this._keyFn         = null;
+        this._phase         = 'idle';
+        this._falseStarts   = 0;
+        this._itiStartedAt  = 0;
+        this._currentTrial  = null;
     }
 
     unmount() {
@@ -61,7 +64,6 @@ export class ReactionTimeTest extends BaseTest {
         });
     }
 
-
     _renderDemo() {
         const isChoice = this.config.variant === 'choice';
         this._buildDemoShell(`Reaction Time ${isChoice ? '(Choice)' : '(Simple)'} — live preview`);
@@ -73,9 +75,9 @@ export class ReactionTimeTest extends BaseTest {
       </div>
     `;
 
-        const sides   = ['left', 'right', 'left', 'right'];
-        let cur       = 0;
-        const PERIOD  = 2000;
+        const sides  = ['left', 'right', 'left', 'right'];
+        let cur      = 0;
+        const PERIOD = 2000;
 
         const runFrame = () => {
             const circle = document.getElementById('demo-rt-circle');
@@ -92,7 +94,7 @@ export class ReactionTimeTest extends BaseTest {
 
                 this._demoTimeout(() => {
                     circle.classList.add('demo-rt__circle--pressed');
-                    circle.innerHTML = `<span style="font-size:1.6rem;color:#fff;">✓</span>`;
+                    circle.innerHTML = '';
 
                     this._demoTimeout(() => {
                         circle.className = 'demo-rt__circle';
@@ -121,7 +123,8 @@ export class ReactionTimeTest extends BaseTest {
             return;
         }
 
-        this._phase = 'iti';
+        this._phase        = 'iti';
+        this._itiStartedAt = performance.now();
         this._currentTrial = {
             variant: this.config.variant,
             side:    this._rng.pick(['left', 'right']),
@@ -142,10 +145,9 @@ export class ReactionTimeTest extends BaseTest {
         const target = document.getElementById('rt-circle');
         if (!target) { this._startNextTrial(); return; }
 
-        const isChoice = this.config.variant === 'choice';
         target.classList.remove('rt-circle--wait');
         target.classList.add('rt-circle--active');
-        if (isChoice) {
+        if (this.config.variant === 'choice') {
             target.innerHTML = `<span class="rt-arrow">${this._currentTrial.side === 'left' ? '←' : '→'}</span>`;
         }
 
@@ -161,22 +163,46 @@ export class ReactionTimeTest extends BaseTest {
 
     _makeFalseStartHandler() {
         return (e) => {
-            if (!this._isTargetKey(e)) return;
+            if (e.repeat || !this._isTargetKey(e)) return;
             e.preventDefault();
             if (this._phase !== 'iti') return;
+
             this._clearTimers();
             this._detachKey();
+
             this._falseStarts++;
+            const itiElapsedMs = Math.round(performance.now() - this._itiStartedAt);
+            const pressedKey   = this._keyToSide(e);
+
+            this._startTrial({ ...this._currentTrial, falseStart: true });
+            this._endTrial({
+                key:             pressedKey,
+                correct:         false,
+                timedOut:        false,
+                falseStart:      true,
+                falseStartCount: this._falseStarts,
+                itiElapsedMs,
+                side:            this._currentTrial.side,
+                rt:              null,
+            });
+            // BaseTest._endTrial increments _trialIndex; undo so false starts don't consume stimulus trials
+            this._trialIndex--;
+
             this._phase = 'feedback';
             const circle = document.getElementById('rt-circle');
-            if (circle) circle.classList.add('rt-circle--false');
-            setTimeout(() => this._startNextTrial(), 900);
+            if (circle) {
+                circle.classList.remove('rt-circle--wait', 'rt-circle--active');
+                circle.classList.add('rt-circle--false');
+                circle.innerHTML = '';
+            }
+
+            this._feedbackTimer = setTimeout(() => this._startNextTrial(), 900);
         };
     }
 
     _makeResponseHandler() {
         return (e) => {
-            if (!this._isTargetKey(e)) return;
+            if (e.repeat || !this._isTargetKey(e)) return;
             e.preventDefault();
             if (this._phase !== 'stimulus') return;
             this._clearTimers();
@@ -194,22 +220,26 @@ export class ReactionTimeTest extends BaseTest {
                 ? key === 'space'
                 : key === this._currentTrial.side;
 
-        this._endTrial({ key, correct, timedOut, side: this._currentTrial.side });
+        this._endTrial({
+            key,
+            correct,
+            timedOut,
+            falseStart: false,
+            side:       this._currentTrial.side,
+        });
 
         const circle = document.getElementById('rt-circle');
         if (circle) {
             circle.classList.remove('rt-circle--active');
             circle.classList.add(correct ? 'rt-circle--correct' : 'rt-circle--wrong');
-            if (correct) circle.innerHTML = `<span class="rt-check">✓</span>`;
+            circle.innerHTML = '';
         }
 
-        this._trialIndex++;
-        setTimeout(() => this._startNextTrial(), 700);
+        this._feedbackTimer = setTimeout(() => this._startNextTrial(), 700);
     }
 
     _renderWaitScreen() {
-        const pct      = (this._trialIndex / this.config.trials) * 100;
-        const isChoice = this.config.variant === 'choice';
+        const pct = (this._trialIndex / this.config.trials) * 100;
 
         this._container.innerHTML = `
       <div class="test-screen">
@@ -219,9 +249,7 @@ export class ReactionTimeTest extends BaseTest {
           </div>
         </div>
         <div class="test-arena rt-test-arena">
-          ${isChoice ? `<div class="rt-side-hint rt-side-hint--left"><span>←</span></div>` : ''}
           <div class="rt-circle rt-circle--wait" id="rt-circle"></div>
-          ${isChoice ? `<div class="rt-side-hint rt-side-hint--right"><span>→</span></div>` : ''}
         </div>
       </div>
     `;
@@ -255,7 +283,9 @@ export class ReactionTimeTest extends BaseTest {
     _clearTimers() {
         clearTimeout(this._itiTimer);
         clearTimeout(this._stimTimer);
-        this._itiTimer  = null;
-        this._stimTimer = null;
+        clearTimeout(this._feedbackTimer);
+        this._itiTimer      = null;
+        this._stimTimer     = null;
+        this._feedbackTimer = null;
     }
 }

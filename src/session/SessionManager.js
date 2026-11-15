@@ -13,21 +13,25 @@ const log = createLogger('SessionManager');
 
 class SessionManager {
     constructor() {
-        this._session   = null;
-        this._testQueue = [];
-        this._currentTest = null;
-        this._container   = null;
-        this._unsubTest   = null;
+        this._session       = null;
+        this._testQueue     = [];
+        this._currentTest   = null;
+        this._container     = null;
+        this._unsubTest     = null;
+        this._nextTestTimer = null;
     }
 
     /**
      * Begin a session.
      * @param {Object} opts
-     * @param {Object}   opts.participant  — participant metadata
-     * @param {BaseTest[]} opts.tests      — ordered array of test instances
-     * @param {HTMLElement} opts.container — DOM element to mount tests into
+     * @param {Object}      opts.participant — participant metadata
+     * @param {BaseTest[]}  opts.tests       — ordered array of test instances
+     * @param {HTMLElement} opts.container   — DOM element to mount tests into
      */
     begin({ participant, tests, container }) {
+        clearTimeout(this._nextTestTimer);
+        this._nextTestTimer = null;
+
         this._session = {
             id:          crypto.randomUUID(),
             startTime:   new Date().toISOString(),
@@ -48,7 +52,45 @@ class SessionManager {
         this._runNextTest();
     }
 
+    isActive() {
+        return Boolean(this._session && !this._session.endTime);
+    }
+
+    abort() {
+        if (!this.isActive()) return;
+
+        log.warn('Aborting active session', this._session.id);
+        clearTimeout(this._nextTestTimer);
+        this._nextTestTimer = null;
+
+        if (this._unsubTest) {
+            this._unsubTest();
+            this._unsubTest = null;
+        }
+
+        if (this._currentTest) {
+            try {
+                this._currentTest.unmount();
+            } catch (err) {
+                log.error('Error unmounting test during abort', err);
+            }
+            this._currentTest = null;
+        }
+
+        try {
+            fnirsDevice.stopRecording();
+        } catch (err) {
+            log.error('Error stopping fNIRS recording during abort', err);
+        }
+
+        this._testQueue = [];
+        this._session   = null;
+        stateManager.setState({ session: null });
+    }
+
     _runNextTest() {
+        if (!this._session) return;
+
         if (!this._testQueue.length) {
             this._end();
             return;
@@ -57,7 +99,7 @@ class SessionManager {
         this._currentTest = this._testQueue.shift();
 
         this._unsubTest = eventBus.on(EVENTS.TEST_ENDED, ({ testId, results }) => {
-            if (testId !== this._currentTest.id) return;
+            if (!this._currentTest || testId !== this._currentTest.id) return;
 
             if (this._unsubTest) { this._unsubTest(); this._unsubTest = null; }
 
@@ -70,7 +112,8 @@ class SessionManager {
             stateManager.setState({ session: { ...this._session } });
             log.info(`Test "${testId}" complete — ${results?.length ?? 0} trials`);
 
-            setTimeout(() => this._runNextTest(), 1200);
+            this._currentTest = null;
+            this._nextTestTimer = setTimeout(() => this._runNextTest(), 1200);
         });
 
         this._container.innerHTML = '';
@@ -80,11 +123,13 @@ class SessionManager {
     }
 
     _end() {
+        clearTimeout(this._nextTestTimer);
+        this._nextTestTimer = null;
         if (this._unsubTest) { this._unsubTest(); this._unsubTest = null; }
 
         const recording = fnirsDevice.stopRecording();
-        this._session.fnirs    = recording;
-        this._session.endTime  = new Date().toISOString();
+        this._session.fnirs   = recording;
+        this._session.endTime = new Date().toISOString();
 
         stateManager.setState({ session: { ...this._session } });
         eventBus.emit(EVENTS.SESSION_ENDED, this._session);
