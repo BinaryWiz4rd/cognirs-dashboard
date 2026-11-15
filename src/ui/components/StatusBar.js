@@ -1,23 +1,35 @@
+/**
+ * Persistent fNIRS telemetry and connection status panel.
+ */
+
 import { eventBus, EVENTS } from '../../core/EventBus.js';
 import { stateManager }     from '../../core/StateManager.js';
 import { fnirsDevice }      from '../../fnirs/FNIRSDevice.js';
 
 const STATUS_THEMES = {
-    disconnected: { label: 'Disconnected', styleClass: 'panel-status--offline' },
+    disconnected: { label: 'Disconnected',   styleClass: 'panel-status--offline' },
     connecting:   { label: 'Connecting...',  styleClass: 'panel-status--idle' },
     connected:    { label: 'Connected',      styleClass: 'panel-status--active' },
     recording:    { label: 'Recording',      styleClass: 'panel-status--recording' },
-    error:        { label: 'Hardware Error', styleClass: 'panel-status--error' }
+    error:        { label: 'Link Error',     styleClass: 'panel-status--error' },
 };
 
 export function renderStatusBar(mountEl) {
     let sampleCount = 0;
-    let isOpen = true;
+    let isOpen      = true;
+
+    function getSourceLabel() {
+        if (fnirsDevice.isSimulated) return '50 Hz Simulator';
+        if (fnirsDevice.activeMode === 'cortivision') return 'Cortivision / LSL Bridge';
+        return 'WebSerial COM Port';
+    }
 
     function render() {
-        const currentStatus = stateManager.getState().fnirsStatus || 'disconnected';
-        const config = STATUS_THEMES[currentStatus] || STATUS_THEMES.disconnected;
-        const isSimulated = fnirsDevice.isSimulated;
+        const state         = stateManager.getState();
+        const currentStatus = state.fnirsStatus || 'disconnected';
+        const currentMode   = state.fnirsMode || 'cortivision';
+        const config        = STATUS_THEMES[currentStatus] || STATUS_THEMES.disconnected;
+        const canSwitchMode = currentStatus === 'disconnected' || currentStatus === 'error';
 
         mountEl.innerHTML = `
             <aside class="fnirs-sidebar-panel ${!isOpen ? 'fnirs-sidebar-panel--collapsed' : ''}" aria-label="fNIRS Device Management">
@@ -28,7 +40,7 @@ export function renderStatusBar(mountEl) {
                 <div class="sidebar-panel__content">
                     <div class="sidebar-panel__section">
                         <h2 class="sidebar-panel__title">fNIRS Connection</h2>
-                        
+
                         <div class="panel-status ${config.styleClass}">
                             <span class="panel-status__dot"></span>
                             <span class="panel-status__text">${config.label}</span>
@@ -42,21 +54,34 @@ export function renderStatusBar(mountEl) {
                         ` : ''}
                     </div>
 
+                    ${canSwitchMode ? `
+                        <div class="sidebar-panel__section">
+                            <label class="form-label" for="sidebar-fnirs-mode" style="font-size:0.75rem; margin-bottom:4px; display:block;">
+                                Source Protocol
+                            </label>
+                            <select id="sidebar-fnirs-mode" class="select" style="font-size:0.8rem; padding:6px 8px;">
+                                <option value="cortivision" ${currentMode === 'cortivision' ? 'selected' : ''}>Cortivision / LSL</option>
+                                <option value="serial" ${currentMode === 'serial' ? 'selected' : ''}>Simulator (50 Hz)</option>
+                            </select>
+                        </div>
+                    ` : ''}
+
                     <div class="sidebar-panel__section sidebar-panel__actions">
-                        ${currentStatus === 'disconnected' || currentStatus === 'error' ? `
+                        ${canSwitchMode ? `
                             <button id="fnirs-connect-action" class="sidebar-panel__btn btn-connect">
-                                Connect Device
+                                Connect Stream
                             </button>
                         ` : `
-                            <button id="fnirs-disconnect-action" class="sidebar-panel__btn btn-disconnect">
-                                Disconnect Device
+                            <button id="fnirs-disconnect-action" class="sidebar-panel__btn btn-disconnect"
+                                ${currentStatus === 'connecting' ? 'disabled' : ''}>
+                                ${currentStatus === 'connecting' ? 'Connecting...' : 'Disconnect Stream'}
                             </button>
                         `}
                     </div>
 
                     ${currentStatus !== 'disconnected' && currentStatus !== 'connecting' ? `
                         <div class="sidebar-panel__footer">
-                            <span>Stream Source: ${isSimulated ? 'Simulation Window' : 'WebSerial COM Port'}</span>
+                            <span>Stream Source: ${getSourceLabel()}</span>
                         </div>
                     ` : ''}
                 </div>
@@ -75,17 +100,28 @@ export function renderStatusBar(mountEl) {
             });
         }
 
-        const connectBtn = document.getElementById('fnirs-connect-action');
+        const modeSelect = document.getElementById('sidebar-fnirs-mode');
+        if (modeSelect) {
+            modeSelect.addEventListener('change', () => {
+                if (!fnirsDevice.isConnected) {
+                    fnirsDevice.setMode(modeSelect.value);
+                }
+            });
+        }
+
+        const connectBtn    = document.getElementById('fnirs-connect-action');
         const disconnectBtn = document.getElementById('fnirs-disconnect-action');
 
         if (connectBtn) {
             connectBtn.addEventListener('click', async () => {
-                connectBtn.disabled = true;
-                connectBtn.textContent = 'Opening Port...';
+                connectBtn.disabled    = true;
+                connectBtn.textContent = 'Connecting...';
                 try {
-                    await fnirsDevice.connect();
+                    const { fnirsMode, fnirsUrl } = stateManager.getState();
+                    fnirsDevice.setMode(fnirsMode ?? 'cortivision');
+                    await fnirsDevice.connect({ url: fnirsUrl });
                 } catch (error) {
-                    console.error('fNIRS hardware initialization failure:', error);
+                    console.error('fNIRS stream initialization failure:', error);
                 }
             });
         }
@@ -96,7 +132,7 @@ export function renderStatusBar(mountEl) {
                     await fnirsDevice.disconnect();
                     sampleCount = 0;
                 } catch (error) {
-                    console.error('fNIRS hardware teardown failure:', error);
+                    console.error('fNIRS stream teardown failure:', error);
                 }
             });
         }
@@ -104,6 +140,10 @@ export function renderStatusBar(mountEl) {
 
     render();
     stateManager.subscribe(render);
+
+    eventBus.on(EVENTS.FNIRS_RECORDING_START, () => {
+        sampleCount = 0;
+    });
 
     eventBus.on(EVENTS.FNIRS_DATA, (samples) => {
         sampleCount += samples.length;

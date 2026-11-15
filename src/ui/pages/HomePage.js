@@ -1,3 +1,7 @@
+/**
+ * Landing overview page with quick session launch and fNIRS stream connection.
+ */
+
 import { eventBus, EVENTS } from '../../core/EventBus.js';
 import { fnirsDevice }      from '../../fnirs/FNIRSDevice.js';
 import { stateManager }     from '../../core/StateManager.js';
@@ -22,10 +26,10 @@ const TESTS_INFO = [
 ];
 
 const PROTOCOL = [
-    { num: '01', label: 'Setup',     desc: 'Participant info, group assignment, test selection' },
-    { num: '02', label: 'Connect',   desc: 'fNIRS device pairing via WebSerial' },
-    { num: '03', label: 'Execute',   desc: 'Synchronized cognitive tests with fNIRS recording' },
-    { num: '04', label: 'Export',    desc: 'Behavioral & hemodynamic data as CSV / JSON' },
+    { num: '01', label: 'Setup',   desc: 'Participant info, group assignment, test selection' },
+    { num: '02', label: 'Connect', desc: 'Wireless Cortivision Cap via LSL WebSocket stream' },
+    { num: '03', label: 'Execute', desc: 'Synchronized cognitive tests with fNIRS recording' },
+    { num: '04', label: 'Export',  desc: 'Behavioral & hemodynamic data as CSV / JSON' },
 ];
 
 export function renderHomePage(mountEl) {
@@ -40,7 +44,7 @@ export function renderHomePage(mountEl) {
         </p>
         <div class="home-cta">
           <button class="btn btn--primary btn--lg" id="home-start">Start new session</button>
-          <button class="btn btn--lg" id="home-fnirs">Connect fNIRS device</button>
+          <button class="btn btn--lg" id="home-fnirs">Connect fNIRS stream</button>
         </div>
       </div>
 
@@ -74,19 +78,28 @@ export function renderHomePage(mountEl) {
 
     document.getElementById('home-fnirs')
         .addEventListener('click', async () => {
-            const { fnirsStatus } = stateManager.getState();
+            const { fnirsStatus, fnirsMode, fnirsUrl } = stateManager.getState();
             if (fnirsStatus === 'connected' || fnirsStatus === 'recording') {
-                toast('fNIRS device already connected', 'info');
+                toast('fNIRS stream already connected', 'info');
                 return;
             }
+            const mode = fnirsMode ?? 'cortivision';
             try {
-                await fnirsDevice.connect();
+                fnirsDevice.setMode(mode);
+                await fnirsDevice.connect({ url: fnirsUrl });
                 toast(
-                    fnirsDevice.isSimulated ? 'Simulation mode active — no hardware detected' : 'fNIRS device connected',
+                    fnirsDevice.isSimulated
+                        ? '50 Hz simulation stream active'
+                        : 'Connected to Cortivision LSL bridge',
                     fnirsDevice.isSimulated ? 'warning' : 'success'
                 );
             } catch {
-                toast('Failed to connect fNIRS device', 'error');
+                toast(
+                    mode === 'cortivision'
+                        ? 'Cortivision LSL bridge unreachable — open Setup to configure or use Simulator'
+                        : 'Failed to connect fNIRS stream',
+                    'error'
+                );
             }
         });
 }

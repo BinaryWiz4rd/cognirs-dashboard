@@ -1,4 +1,6 @@
 /**
+ * Session configuration page: participant metadata, fNIRS transport setup
+ * (Cortivision LSL WebSocket bridge or 50 Hz simulator), and cognitive test selection.
  */
 
 import { eventBus, EVENTS }            from '../../core/EventBus.js';
@@ -104,6 +106,10 @@ const TEST_REGISTRY = [
 const GROUPS = ['Attention & Inhibition', 'Working Memory', 'Executive Function'];
 
 export function renderSetupPage(mountEl) {
+    const initialState = stateManager.getState();
+    const initialMode  = initialState.fnirsMode ?? 'cortivision';
+    const initialUrl   = initialState.fnirsUrl ?? 'ws://127.0.0.1:5732';
+
     const groupedHtml = GROUPS.map(group => {
         const tests = TEST_REGISTRY.filter(t => t.group === group);
         return `
@@ -169,10 +175,31 @@ export function renderSetupPage(mountEl) {
           <div class="card">
             <h3 style="margin-bottom: var(--space-sm);">fNIRS device</h3>
             <p style="font-size:0.85rem; color:var(--color-text-muted); margin-bottom:var(--space-md);">
-              Connect your fNIRS headset via USB serial before starting the session.
+              Connect to the Cortivision PHOTON Cap via the local LSL WebSocket bridge, or use the 50 Hz simulator for offline testing.
             </p>
+
+            <div class="setup-form" style="margin-bottom: var(--space-md);">
+              <div class="form-group">
+                <label class="form-label" for="fnirs-mode">Acquisition source</label>
+                <select class="select" id="fnirs-mode">
+                  <option value="cortivision" ${initialMode === 'cortivision' ? 'selected' : ''}>
+                    Cortivision / LSL Bridge (WebSocket)
+                  </option>
+                  <option value="serial" ${initialMode === 'serial' ? 'selected' : ''}>
+                    50 Hz Simulator / WebSerial
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-group" id="fnirs-url-group" style="${initialMode === 'cortivision' ? '' : 'display:none;'}">
+                <label class="form-label" for="fnirs-url">LSL WebSocket bridge URL</label>
+                <input class="input" id="fnirs-url" type="text" value="${initialUrl}"
+                  placeholder="ws://127.0.0.1:5732" autocomplete="off" />
+              </div>
+            </div>
+
             <div id="fnirs-badge" style="margin-bottom: var(--space-md);"></div>
-            <button class="btn" id="setup-connect">Connect device</button>
+            <button class="btn" id="setup-connect">Connect stream</button>
           </div>
         </div>
 
@@ -199,33 +226,90 @@ export function renderSetupPage(mountEl) {
     </div>
   `;
 
+    const modeSelect = document.getElementById('fnirs-mode');
+    const urlGroup   = document.getElementById('fnirs-url-group');
+    const urlInput   = document.getElementById('fnirs-url');
+    const connectBtn = document.getElementById('setup-connect');
+
+    let unsubState = null;
+
     const updateFnirsUI = () => {
-        const s  = stateManager.getState().fnirsStatus;
-        const el = document.getElementById('fnirs-badge');
-        if (!el) return;
+        const badgeEl = document.getElementById('fnirs-badge');
+        if (!badgeEl) {
+            unsubState?.();
+            return;
+        }
+
+        const { fnirsStatus, fnirsMode } = stateManager.getState();
+        const isActive = fnirsStatus === 'connected' || fnirsStatus === 'recording';
+
         const map = {
             disconnected: ['badge--neutral', 'Not connected'],
             connecting:   ['badge--warning', 'Connecting…'],
-            connected:    ['badge--success', fnirsDevice.isSimulated ? 'Simulation mode' : 'Device connected'],
+            connected:    ['badge--success', fnirsDevice.isSimulated ? 'Simulation mode (50 Hz)' : 'Cortivision LSL connected'],
             recording:    ['badge--success', 'Recording active'],
-            error:        ['badge--danger',  'Connection error'],
+            error:        ['badge--danger',  'Bridge unreachable'],
         };
-        const [cls, label] = map[s] ?? map.disconnected;
-        el.innerHTML = `<span class="badge ${cls}">${label}</span>`;
+
+        const [cls, label] = map[fnirsStatus] ?? map.disconnected;
+        badgeEl.innerHTML = `<span class="badge ${cls}">${label}</span>`;
+
+        if (modeSelect) {
+            modeSelect.value    = fnirsMode ?? 'cortivision';
+            modeSelect.disabled = isActive || fnirsStatus === 'connecting';
+        }
+        if (urlGroup) {
+            urlGroup.style.display = (fnirsMode ?? 'cortivision') === 'cortivision' ? '' : 'none';
+        }
+        if (urlInput) {
+            urlInput.disabled = isActive || fnirsStatus === 'connecting';
+        }
+        if (connectBtn) {
+            connectBtn.disabled    = fnirsStatus === 'connecting';
+            connectBtn.textContent = isActive ? 'Disconnect' : 'Connect stream';
+        }
     };
 
     updateFnirsUI();
-    stateManager.subscribe(updateFnirsUI);
+    unsubState = stateManager.subscribe(updateFnirsUI);
 
-    document.getElementById('setup-connect').addEventListener('click', async () => {
+    modeSelect.addEventListener('change', () => {
+        const selectedMode = modeSelect.value;
+        urlGroup.style.display = selectedMode === 'cortivision' ? '' : 'none';
+        if (!fnirsDevice.isConnected) {
+            fnirsDevice.setMode(selectedMode);
+        }
+    });
+
+    connectBtn.addEventListener('click', async () => {
+        const { fnirsStatus } = stateManager.getState();
+        const isActive = fnirsStatus === 'connected' || fnirsStatus === 'recording';
+
+        if (isActive) {
+            await fnirsDevice.disconnect();
+            toast('fNIRS stream disconnected', 'info');
+            return;
+        }
+
+        const selectedMode = modeSelect.value;
+        const url          = urlInput.value.trim() || 'ws://127.0.0.1:5732';
+
         try {
-            await fnirsDevice.connect();
+            fnirsDevice.setMode(selectedMode);
+            await fnirsDevice.connect({ url });
             toast(
-                fnirsDevice.isSimulated ? 'Simulation mode — hardware not detected' : 'fNIRS device connected',
+                fnirsDevice.isSimulated
+                    ? '50 Hz simulation stream active'
+                    : `Connected to Cortivision LSL bridge (${url})`,
                 fnirsDevice.isSimulated ? 'warning' : 'success'
             );
         } catch {
-            toast('Could not connect fNIRS device', 'error');
+            toast(
+                selectedMode === 'cortivision'
+                    ? `Could not connect to LSL bridge at ${url}`
+                    : 'Could not start fNIRS stream',
+                'error'
+            );
         }
     });
 

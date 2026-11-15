@@ -1,7 +1,9 @@
 const initialState = {
     participant: null,
-    session: null,
+    session:     null,
     fnirsStatus: 'disconnected',
+    fnirsMode:   'cortivision',
+    fnirsUrl:    'ws://127.0.0.1:5732',
     currentTest: null,
     currentPage: 'home',
 };
