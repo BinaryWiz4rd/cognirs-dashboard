@@ -1,5 +1,7 @@
 import { eventBus, EVENTS } from '../../core/EventBus.js';
 
+const ALLOWED_TYPES = new Set(['info', 'success', 'warning', 'error']);
+
 export function initToasts(mountEl) {
     mountEl.innerHTML = '<div class="toast-container" id="toast-container" aria-live="assertive"></div>';
 
@@ -7,13 +9,20 @@ export function initToasts(mountEl) {
         const container = document.getElementById('toast-container');
         if (!container) return;
 
+        const safeType = ALLOWED_TYPES.has(type) ? type : 'info';
+
         const toast = document.createElement('div');
-        toast.className = `toast toast--${type} anim-slide-up`;
+        toast.className = `toast toast--${safeType} anim-slide-up`;
         toast.setAttribute('role', 'alert');
-        toast.innerHTML = `
-      <span class="toast__dot"></span>
-      <span class="toast__msg">${message}</span>
-    `;
+
+        const dot = document.createElement('span');
+        dot.className = 'toast__dot';
+
+        const msg = document.createElement('span');
+        msg.className = 'toast__msg';
+        msg.textContent = String(message ?? '');
+
+        toast.append(dot, msg);
         container.appendChild(toast);
 
         setTimeout(() => {

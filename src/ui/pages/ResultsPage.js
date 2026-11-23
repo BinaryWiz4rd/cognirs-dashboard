@@ -9,6 +9,18 @@ import { stateManager }    from '../../core/StateManager.js';
 import { SessionExporter } from '../../session/SessionExporter.js';
 import { DataUtils }       from '../../utils/DataUtils.js';
 
+const HTML_ESCAPE_MAP = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+};
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (ch) => HTML_ESCAPE_MAP[ch]);
+}
+
 const METRIC_BUILDERS = {
 
     'stroop': (results) => {
@@ -74,16 +86,16 @@ const METRIC_BUILDERS = {
         ];
     },
 
-  'digit-span': (results) => {
-          const correct = results.filter(r => r.correct);
-          const spans   = results.map(r => r.span);
-          const maxSpan = Math.max(...correct.map(r => r.span), 0);
-          return [
-              { label: 'Max span reached',  value: maxSpan },
-              { label: 'Trials correct',    value: `${correct.length} / ${results.length}` },
-              { label: 'Mean span',         value: DataUtils.mean(spans).toFixed(1) },
-          ];
-      },
+    'digit-span': (results) => {
+        const correct = results.filter(r => r.correct);
+        const spans   = results.map(r => r.span);
+        const maxSpan = Math.max(...spans, 0);
+        return [
+            { label: 'Max span reached',  value: maxSpan },
+            { label: 'Trials correct',    value: `${correct.length} / ${results.length}` },
+            { label: 'Mean span',         value: DataUtils.mean(spans).toFixed(1) },
+        ];
+    },
 
     'reaction-time': (results) => {
         const hits = results.filter(r => r.correct && !r.timedOut);
@@ -144,8 +156,8 @@ export function renderResultsPage(mountEl) {
         <div>
           <h2>Session Results</h2>
           <div class="results-participant-info" style="margin-top:var(--space-sm);">
-            <span class="badge badge--neutral">ID: ${participant.id}</span>
-            <span class="badge badge--neutral">Age: ${participant.age}</span>
+            <span class="badge badge--neutral">ID: ${escapeHtml(participant.id)}</span>
+            <span class="badge badge--neutral">Age: ${escapeHtml(participant.age)}</span>
             ${participant.sex ? `<span class="badge badge--neutral">${participant.sex === 'F' ? 'Female' : 'Male'}</span>` : ''}
             <span class="badge ${participant.group === 'adhd' ? 'badge--warning' : 'badge--info'}">
               ${participant.group === 'adhd' ? 'ADHD' : 'Neurotypical control'}
@@ -183,16 +195,16 @@ export function renderResultsPage(mountEl) {
           <div class="card results-test-card anim-slide-up anim-d${Math.min(i + 1, 5)}" style="margin-bottom:var(--space-md);">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-lg);">
               <div>
-                <span class="results-test-label">${label}</span>
+                <span class="results-test-label">${escapeHtml(label)}</span>
                 <span class="badge badge--neutral" style="margin-left:var(--space-sm);">${results.length} trials</span>
               </div>
             </div>
             <div class="results-metrics-grid">
               ${metrics.map(m => `
                 <div class="results-metric">
-                  <span class="results-metric__value">${m.value}</span>
-                  <span class="results-metric__label">${m.label}</span>
-                  ${m.note ? `<span class="results-metric__note">${m.note}</span>` : ''}
+                  <span class="results-metric__value">${escapeHtml(m.value)}</span>
+                  <span class="results-metric__label">${escapeHtml(m.label)}</span>
+                  ${m.note ? `<span class="results-metric__note">${escapeHtml(m.note)}</span>` : ''}
                 </div>
               `).join('')}
             </div>
