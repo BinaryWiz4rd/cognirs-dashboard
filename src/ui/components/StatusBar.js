@@ -61,7 +61,8 @@ export function renderStatusBar(mountEl) {
                             </label>
                             <select id="sidebar-fnirs-mode" class="select" style="font-size:0.8rem; padding:6px 8px;">
                                 <option value="cortivision" ${currentMode === 'cortivision' ? 'selected' : ''}>Cortivision / LSL</option>
-                                <option value="serial" ${currentMode === 'serial' ? 'selected' : ''}>Simulator (50 Hz)</option>
+                                <option value="simulator" ${currentMode === 'simulator' ? 'selected' : ''}>Simulator (50 Hz)</option>
+                                <option value="serial" ${currentMode === 'serial' ? 'selected' : ''}>WebSerial Port</option>
                             </select>
                         </div>
                     ` : ''}

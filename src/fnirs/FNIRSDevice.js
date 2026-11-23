@@ -1,6 +1,6 @@
 /**
- * High-level controller managing fNIRS hardware adapters (Cortivision WebSocket
- * and WebSerial/Simulator), connection state, and synchronized recording.
+ * High-level controller managing fNIRS hardware adapters (Cortivision WebSocket,
+ * offline 50 Hz simulator, and WebSerial), connection state, and synchronized recording.
  */
 
 import { FNIRSAdapter }       from './FNIRSAdapter.js';
@@ -17,6 +17,7 @@ export class FNIRSDevice {
         this._serialAdapter      = new FNIRSAdapter();
         this._cortivisionAdapter = new CortivisionAdapter();
         this._activeAdapter      = this._cortivisionAdapter;
+        this._mode               = 'cortivision';
 
         this._recorder           = new FNIRSRecorder();
         this._connected          = false;
@@ -25,7 +26,7 @@ export class FNIRSDevice {
     get recorder()    { return this._recorder; }
     get isConnected() { return this._connected; }
     get isSimulated() { return this._activeAdapter.isSimulated; }
-    get activeMode()  { return this._activeAdapter instanceof CortivisionAdapter ? 'cortivision' : 'serial'; }
+    get activeMode()  { return this._mode; }
     get deviceUrl()   { return this._activeAdapter.deviceUrl ?? null; }
 
     setMode(mode) {
@@ -34,51 +35,67 @@ export class FNIRSDevice {
         }
 
         if (mode === 'cortivision') {
+            this._mode          = 'cortivision';
             this._activeAdapter = this._cortivisionAdapter;
             stateManager.setState({ fnirsMode: 'cortivision' });
             log.info('Configured fNIRS transport for Cortivision WebSocket stream');
+        } else if (mode === 'simulator') {
+            this._mode          = 'simulator';
+            this._activeAdapter = this._serialAdapter;
+            stateManager.setState({ fnirsMode: 'simulator' });
+            log.info('Configured fNIRS transport for offline 50 Hz simulator');
         } else {
+            this._mode          = 'serial';
             this._activeAdapter = this._serialAdapter;
             stateManager.setState({ fnirsMode: 'serial' });
-            log.info('Configured fNIRS transport for WebSerial / Simulator interface');
+            log.info('Configured fNIRS transport for WebSerial interface');
         }
     }
 
     async connect(options = {}) {
-        const state = stateManager.getState();
-        const url   = options.url ?? state.fnirsUrl ?? 'ws://127.0.0.1:5732';
+        const state    = stateManager.getState();
+        const url      = options.url ?? state.fnirsUrl ?? 'ws://127.0.0.1:5732';
+        const simulate = options.simulate ?? (this._mode === 'simulator');
 
-        if (this.activeMode === 'cortivision') {
+        if (this._mode === 'cortivision') {
             stateManager.setState({ fnirsUrl: url });
         }
 
         stateManager.setState({ fnirsStatus: 'connecting' });
-        log.info(`Connecting via [${this.activeMode}] protocol...`);
+        log.info(`Connecting via [${this._mode}] protocol...`);
 
         try {
             const result = await this._activeAdapter.connect({
                 ...options,
                 url,
+                simulate,
                 onData:  (samples) => this._onData(samples),
                 onError: (err)     => this._onError(err),
                 onClose: (event)   => this._onClose(event),
             });
 
             this._connected = true;
-            stateManager.setState({ fnirsStatus: 'connected' });
+
+            if (this._recorder.isActive) {
+                this._recorder.addManualMarker('STREAM_RECONNECTED');
+                stateManager.setState({ fnirsStatus: 'recording' });
+            } else {
+                stateManager.setState({ fnirsStatus: 'connected' });
+            }
+
             eventBus.emit(EVENTS.FNIRS_CONNECTED, {
                 simulated: result.simulated,
-                mode:      this.activeMode,
+                mode:      this._mode,
                 url:       this.deviceUrl,
             });
 
-            log.info(`fNIRS device connected (${this.activeMode})`, result);
+            log.info(`fNIRS device connected (${this._mode})`, result);
             return result;
         } catch (err) {
             this._connected = false;
             stateManager.setState({ fnirsStatus: 'error' });
             eventBus.emit(EVENTS.FNIRS_ERROR, err);
-            log.error(`fNIRS connection failed (${this.activeMode})`, err);
+            log.error(`fNIRS connection failed (${this._mode})`, err);
             throw err;
         }
     }
@@ -117,12 +134,15 @@ export class FNIRSDevice {
     _onClose(event) {
         if (!this._connected) return;
 
-        if (this._recorder.isActive) {
-            this._recorder.stop();
-        }
-
         this._connected  = false;
         const unexpected = Boolean(event && event.code !== 1000);
+
+        if (this._recorder.isActive) {
+            this._recorder.addManualMarker('STREAM_INTERRUPTED');
+            eventBus.emit(EVENTS.FNIRS_STREAM_INTERRUPTED, { code: event?.code });
+            log.warn('fNIRS stream interrupted during active recording; recorder remains armed');
+        }
+
         stateManager.setState({ fnirsStatus: unexpected ? 'error' : 'disconnected' });
         eventBus.emit(EVENTS.FNIRS_DISCONNECTED, { unexpected, code: event?.code });
         log.warn('fNIRS connection closed', { unexpected, code: event?.code });

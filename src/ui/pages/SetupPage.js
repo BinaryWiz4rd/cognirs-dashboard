@@ -1,6 +1,7 @@
 /**
  * Session configuration page: participant metadata, fNIRS transport setup
- * (Cortivision LSL WebSocket bridge or 50 Hz simulator), and cognitive test selection.
+ * (Cortivision LSL WebSocket bridge, 50 Hz offline simulator, or WebSerial),
+ * and cognitive test selection.
  */
 
 import { eventBus, EVENTS }            from '../../core/EventBus.js';
@@ -185,8 +186,11 @@ export function renderSetupPage(mountEl) {
                   <option value="cortivision" ${initialMode === 'cortivision' ? 'selected' : ''}>
                     Cortivision / LSL Bridge (WebSocket)
                   </option>
+                  <option value="simulator" ${initialMode === 'simulator' ? 'selected' : ''}>
+                    50 Hz Simulator (Offline)
+                  </option>
                   <option value="serial" ${initialMode === 'serial' ? 'selected' : ''}>
-                    50 Hz Simulator / WebSerial
+                    WebSerial COM Port
                   </option>
                 </select>
               </div>
@@ -338,7 +342,7 @@ export function renderSetupPage(mountEl) {
             .filter(t => selected.includes(t.id))
             .map(t => t.factory());
 
-unsubState?.();
+        unsubState?.();
         eventBus.emit(EVENTS.NAVIGATE, 'test');
 
         const runnerContainer = mountEl.querySelector('.test-runner') ?? document.querySelector('.test-runner');

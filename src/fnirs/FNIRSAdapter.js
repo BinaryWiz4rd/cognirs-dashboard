@@ -1,5 +1,5 @@
 /**
- * Hardware abstraction for WebSerial fNIRS devices with a built-in 50 Hz simulator fallback.
+ * Hardware abstraction for WebSerial fNIRS devices with a built-in 50 Hz simulator.
  * Anchors incoming sample frames to the monotonic performance.now() clock.
  */
 
@@ -29,11 +29,15 @@ export class FNIRSAdapter {
     get isConnected() { return this._isConnected; }
     get isSimulated() { return this._isSimulated; }
 
-    async connect({ baudRate = 115200, onData, onError, onClose } = {}) {
+    async connect({ baudRate = 115200, simulate = false, onData, onError, onClose } = {}) {
         this._onData  = onData;
         this._onError = onError;
         this._onClose = onClose;
         this._parser  = new FNIRSParser();
+
+        if (simulate) {
+            return this._startSimulation();
+        }
 
         if (!('serial' in navigator)) {
             log.warn('WebSerial API not supported in this browser — starting 50 Hz simulator');
