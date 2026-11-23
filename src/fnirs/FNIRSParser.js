@@ -4,7 +4,7 @@
  *
  * Expected packet format (16 bytes):
  *   [0]    : 0xAA (sync byte)
- *   [1]    : packet length
+ *   [1]    : packet length (16)
  *   [2-5]  : timestamp (uint32 little-endian, ms)
  *   [6-9]  : HbO channel (float32 little-endian)
  *   [10-13]: HbR channel (float32 little-endian)
@@ -14,8 +14,9 @@
 
 import { createLogger } from '../core/Logger.js';
 
-const SYNC_BYTE = 0xAA;
-const PACKET_SIZE = 16;
+const SYNC_BYTE        = 0xAA;
+const PACKET_SIZE      = 16;
+const MAX_BUFFER_BYTES = 65536;
 
 const log = createLogger('FNIRSParser');
 
@@ -48,7 +49,10 @@ export class FNIRSParser {
         const combined = new Uint8Array(this._buffer.length + chunk.length);
         combined.set(this._buffer);
         combined.set(chunk, this._buffer.length);
-        this._buffer = combined;
+
+        this._buffer = combined.length > MAX_BUFFER_BYTES
+            ? combined.slice(combined.length - MAX_BUFFER_BYTES)
+            : combined;
 
         return this._extractPackets();
     }
@@ -73,12 +77,12 @@ export class FNIRSParser {
 
             const packet = this._buffer.slice(0, PACKET_SIZE);
 
-            if (this._validateChecksum(packet)) {
+            if (packet[1] === PACKET_SIZE && this._validateChecksum(packet)) {
                 const sample = this._parsePacket(packet);
                 if (sample) samples.push(sample);
                 this._buffer = this._buffer.slice(PACKET_SIZE);
             } else {
-                log.warn('Checksum mismatch — discarding byte and resyncing');
+                log.warn('Invalid packet header or checksum - discarding byte and resyncing');
                 this._buffer = this._buffer.slice(1);
             }
         }
@@ -100,6 +104,10 @@ export class FNIRSParser {
             const hbr       = view.getFloat32(10, true);
             const channel   = packet[14];
 
+            if (!Number.isFinite(hbo) || !Number.isFinite(hbr)) {
+                return null;
+            }
+
             return { timestamp, hbo, hbr, channel };
         } catch (e) {
             log.error('Failed to parse packet', e);
@@ -116,6 +124,6 @@ export class FNIRSParser {
  * @typedef {Object} FNIRSSample
  * @property {number} timestamp  - Device timestamp in ms
  * @property {number} hbo        - Oxygenated hemoglobin (μmol/L)
- * @property {number} hbr        - eoxygenated hemoglobin (μmol/L)
+ * @property {number} hbr        - Deoxygenated hemoglobin (μmol/L)
  * @property {number} channel    - Channel index 0–7
  */

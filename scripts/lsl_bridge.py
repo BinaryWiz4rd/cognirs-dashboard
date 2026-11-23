@@ -80,6 +80,9 @@ def build_sample_frames(
     for raw_idx, logical_ch, chromophore in layout:
         if raw_idx >= len(raw_vector):
             continue
+        val = float(raw_vector[raw_idx])
+        if not math.isfinite(val):
+            continue
         entry = grouped.setdefault(
             logical_ch,
             {
@@ -89,7 +92,7 @@ def build_sample_frames(
                 "hbr": None,
             },
         )
-        entry[chromophore] = float(raw_vector[raw_idx])
+        entry[chromophore] = val
 
     return [
         frame
@@ -145,9 +148,10 @@ class LSLWebSocketBridge:
         sample_rate_hz = 50.0
         dt = 1.0 / sample_rate_hz
         t = 0.0
+        start_mono = time.perf_counter()
 
         while True:
-            ts_ms = round(time.time() * 1000, 3)
+            ts_ms = round((time.perf_counter() - start_mono) * 1000, 3)
             frames = [
                 {
                     "timestamp": ts_ms,
@@ -203,6 +207,7 @@ class LSLWebSocketBridge:
 
         inlet = None
         layout: list[tuple[int, int, str]] = []
+        clock_offset_s = time.time() - local_clock()
 
         while True:
             if inlet is None:
@@ -217,7 +222,6 @@ class LSLWebSocketBridge:
             try:
                 samples, timestamps = inlet.pull_chunk(timeout=0.0)
                 if timestamps:
-                    clock_offset_s = time.time() - local_clock()
                     batch: list[dict[str, Any]] = []
                     for vec, lsl_ts in zip(samples, timestamps):
                         ts_ms = round((lsl_ts + clock_offset_s) * 1000, 3)
