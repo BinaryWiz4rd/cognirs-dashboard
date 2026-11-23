@@ -74,16 +74,16 @@ const METRIC_BUILDERS = {
         ];
     },
 
-    'digit-span': (results) => {
-        const correct = results.filter(r => r.correct);
-        const spans   = results.map(r => r.span);
-        const maxSpan = Math.max(...spans, 0);
-        return [
-            { label: 'Max span reached',  value: maxSpan },
-            { label: 'Trials correct',    value: `${correct.length} / ${results.length}` },
-            { label: 'Mean span',         value: DataUtils.mean(spans).toFixed(1) },
-        ];
-    },
+  'digit-span': (results) => {
+          const correct = results.filter(r => r.correct);
+          const spans   = results.map(r => r.span);
+          const maxSpan = Math.max(...correct.map(r => r.span), 0);
+          return [
+              { label: 'Max span reached',  value: maxSpan },
+              { label: 'Trials correct',    value: `${correct.length} / ${results.length}` },
+              { label: 'Mean span',         value: DataUtils.mean(spans).toFixed(1) },
+          ];
+      },
 
     'reaction-time': (results) => {
         const hits = results.filter(r => r.correct && !r.timedOut);
