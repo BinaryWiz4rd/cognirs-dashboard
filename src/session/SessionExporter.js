@@ -15,7 +15,7 @@ export const SessionExporter = {
     toCSV(session) {
         const rows = [[
             'sessionId', 'participantId', 'group', 'sex', 'age',
-            'testId', 'testName', 'trialIndex',
+            'testId', 'testName', 'variant', 'nLevel', 'trialIndex',
             'correct', 'reactionTime_ms', 'timedOut',
             'isTarget', 'isGo', 'congruent',
             'span', 'hit', 'miss', 'falseAlarm',
@@ -23,8 +23,12 @@ export const SessionExporter = {
             'key', 'side', 'letter',
         ]];
 
-        session.tests.forEach(({ testId, name, results }) => {
+        session.tests.forEach((testEntry) => {
+            const { testId, name, results } = testEntry;
             results.forEach((r, i) => {
+                const nLevel  = _resolveNLevel(testEntry, r);
+                const variant = _resolveVariant(testEntry, r, nLevel);
+
                 rows.push([
                     session.id,
                     session.participant.id,
@@ -33,6 +37,8 @@ export const SessionExporter = {
                     session.participant.age,
                     testId,
                     name,
+                    variant,
+                    nLevel,
                     i,
                     _bool(r.correct),
                     r.reactionTime != null ? +r.reactionTime.toFixed(2) : -1,
@@ -103,6 +109,45 @@ export const SessionExporter = {
         );
     },
 };
+
+function _resolveNLevel(testEntry, trial) {
+    if (trial.n !== undefined && trial.n !== null) return trial.n;
+    if (testEntry.n !== undefined && testEntry.n !== null) return testEntry.n;
+    if (testEntry.config?.n !== undefined && testEntry.config?.n !== null) return testEntry.config.n;
+
+    if (testEntry.testId === 'n-back' && typeof testEntry.name === 'string') {
+        const match = testEntry.name.match(/^(\d+)\s*-\s*back/i);
+        if (match) return parseInt(match[1], 10);
+    }
+
+    return '';
+}
+
+function _resolveVariant(testEntry, trial, nLevel) {
+    if (trial.variant !== undefined && trial.variant !== null) return trial.variant;
+    if (testEntry.variant !== undefined && testEntry.variant !== null) return testEntry.variant;
+    if (testEntry.config?.variant !== undefined && testEntry.config?.variant !== null) {
+        return testEntry.config.variant;
+    }
+
+    switch (testEntry.testId) {
+        case 'n-back':
+            return nLevel !== '' ? `${nLevel}-back` : '';
+        case 'digit-span':
+            if (typeof trial.isBack === 'boolean') return trial.isBack ? 'backward' : 'forward';
+            if (/backward/i.test(testEntry.name ?? '')) return 'backward';
+            if (/forward/i.test(testEntry.name ?? '')) return 'forward';
+            return '';
+        case 'reaction-time':
+            if (trial.side === 'center') return 'simple';
+            if (trial.side === 'left' || trial.side === 'right') return 'choice';
+            if (/choice/i.test(testEntry.name ?? '')) return 'choice';
+            if (/simple/i.test(testEntry.name ?? '')) return 'simple';
+            return '';
+        default:
+            return '';
+    }
+}
 
 function _bool(val) {
     if (val === undefined || val === null) return '';
