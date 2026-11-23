@@ -338,13 +338,19 @@ export function renderSetupPage(mountEl) {
             .filter(t => selected.includes(t.id))
             .map(t => t.factory());
 
+unsubState?.();
         eventBus.emit(EVENTS.NAVIGATE, 'test');
-        setTimeout(() => {
-            sessionManager.begin({
-                participant: { id, age, group, sex, notes },
-                tests,
-                container: document.getElementById('page-mount'),
-            });
-        }, 100);
+
+        const runnerContainer = mountEl.querySelector('.test-runner') ?? document.querySelector('.test-runner');
+        if (!runnerContainer) {
+            toast('Unable to initialize test runner container', 'error');
+            return;
+        }
+
+        sessionManager.begin({
+            participant: { id, age, group, sex, notes },
+            tests,
+            container: runnerContainer,
+        });
     });
 }
