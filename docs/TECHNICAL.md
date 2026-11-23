@@ -4,15 +4,13 @@ Architecture, streaming bridge, browser acquisition adapters, clock synchronizat
 
 ## Contents
 
-- [1. Architecture & repository layout](#1-architecture--repository-layout)
-- [2. LSL-to-WebSocket bridge (`scripts/lsl_bridge.py`)](#2-lsl-to-websocket-bridge-scriptslsl_bridgepy)
-- [3. Browser fNIRS layer (`src/fnirs/`)](#3-browser-fnirs-layer-srcfnirs)
-- [4. Core architecture & session lifecycle](#4-core-architecture--session-lifecycle)
-- [5. Cognitive tasks (`src/tests/`)](#5-cognitive-tasks-srctests)
-- [6. Metrics & data exports](#6-metrics--data-exports)
-- [7. Verification & diagnostics](#7-verification--diagnostics)
-
----
+- [Architecture & repository layout](#1-architecture--repository-layout)
+- [LSL-to-WebSocket bridge (`scripts/lsl_bridge.py`)](#2-lsl-to-websocket-bridge-scriptslsl_bridgepy)
+- [Browser fNIRS layer (`src/fnirs/`)](#3-browser-fnirs-layer-srcfnirs)
+- [Core architecture & session lifecycle](#4-core-architecture--session-lifecycle)
+- [Cognitive tasks (`src/tests/`)](#5-cognitive-tasks-srctests)
+- [Metrics & data exports](#6-metrics--data-exports)
+- [Verification & diagnostics](#7-verification--diagnostics)
 
 ## 1. Architecture & repository layout
 
@@ -158,7 +156,7 @@ All three transports feed into `FNIRSDevice` (`src/fnirs/FNIRSDevice.js`), which
 To align behavioral trial events with fNIRS samples on a single monotonic clock without OS wall-clock jumps or WebSocket batching jitter:
 
 1. Upon WebSocket message arrival, `batchReceivedAt = performance.now()` is captured immediately.
-2. `CortivisionAdapter` computes `candidateOffset = batchReceivedAt - maxDeviceTs` and updates `_streamOffsetMs` via an exponential moving average ($\alpha = 0.1$), resetting immediately if $|\Delta| > 1000\text{ ms}$.
+2. `CortivisionAdapter` computes `candidateOffset = batchReceivedAt - maxDeviceTs` and updates `_streamOffsetMs` via an exponential moving average, $\alpha = 0.1$, resetting immediately if $\lvert \Delta \rvert > 1000\text{ ms}$.
 3. Each sample's arrival time is calculated as `rawTs + _streamOffsetMs` and clamped via `Math.max(estimatedPerf, _lastReceivedAt)` so timestamps remain strictly non-decreasing across batched chunks.
 4. Frames with missing or non-finite `hbo`/`hbr` values or non-integer `channel` indices are discarded.
 5. `connect()` enforces a 5000 ms handshake timeout (`DEFAULT_CONNECT_TIMEOUT_MS`) and guards socket callbacks against stale socket instances if `disconnect()` and `connect()` are invoked back-to-back.
@@ -172,10 +170,10 @@ Used in `serial` mode when reading raw bytes from `navigator.serial`. Packets ar
 | `0` | 1 B | Sync byte | Must equal `0xAA` |
 | `1` | 1 B | Packet length | Must equal `16` (`0x10`) |
 | `2..5` | 4 B | `timestamp` | `uint32` little-endian, device ms |
-| `6..9` | 4 B | `hbo` | `float32` little-endian ($\mu\text{mol/L}$) |
-| `10..13` | 4 B | `hbr` | `float32` little-endian ($\mu\text{mol/L}$) |
+| `6..9` | 4 B | `hbo` | `float32` little-endian, $\mu\text{mol/L}$ |
+| `10..13` | 4 B | `hbr` | `float32` little-endian, $\mu\text{mol/L}$ |
 | `14` | 1 B | `channel` | `uint8` channel index (`0–7`) |
-| `15` | 1 B | Checksum | $(\sum_{i=0}^{14} \text{byte}_i) \bmod 256$ |
+| `15` | 1 B | Checksum | $\left(\sum_{i=0}^{14} \text{byte}[i]\right) \bmod 256$ |
 
 On a length or checksum mismatch, `FNIRSParser` discards 1 byte and scans forward for the next `0xAA` sync byte. Its internal accumulation buffer is capped at **65,536 bytes (64 KB)**.
 
@@ -205,26 +203,30 @@ All seven tasks extend `BaseTest.js` and execute across three lifecycle phases:
 
 `BaseTest.unmount()` sets `_unmounted = true` and clears active demo/countdown timers so aborted tests cannot mutate detached DOM nodes or fire stale callbacks.
 
-All stimulus generators use `SeededRandom` (`src/utils/Random.js`, Park-Miller LCG: $s_{k+1} = (16807 \cdot s_k) \bmod (2^{31} - 1)$) with fixed default seeds for reproducible trial sequences.
+All stimulus generators use `SeededRandom` (`src/utils/Random.js`), which implements a Park-Miller LCG with fixed default seeds for reproducible trial sequences:
+
+$$
+s_{k+1} = (16807 \cdot s_k) \bmod (2^{31} - 1)
+$$
 
 | `testId` | Class | Default Parameters | Seed | Input | Implementation Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `stroop` | `StroopTest` | 24 trials, 33% congruent, 3000 ms display, 500 ms ITI | `42` | Mouse click (5 buttons) | Colors: `RED`, `BLUE`, `GREEN`, `YELLOW`, `PURPLE` |
 | `go-no-go` | `GoNoGoTest` | 60 trials, 80% Go, 500 ms stim, 1000 ms response window, 800–1400 ms jittered ISI | `31` | `Space` (filled circle) | Withhold response on outline circle |
-| `cpt` | `ContinuousPerformanceTest` | 100 trials, 22% `A -> X` targets (capped at $\lfloor \text{trials}/2 \rfloor$), 500 ms stim, 1000 ms ISI | `53` | `Space` (`X` after `A`) | Generator swaps accidental standalone `A -> X` pairs |
-| `n-back` | `NBackTest` | 30 scored trials (+ $n$ prime trials), 33% targets, 1500 ms stim, 500 ms ISI | `17` | `Space` (match $n$ back) | $n = 0$ matches `'X'`; includes fallback rules for $n \ge 3$ |
+| `cpt` | `ContinuousPerformanceTest` | 100 trials, 22% `A -> X` targets, capped at $\lfloor \text{trials}/2 \rfloor$, 500 ms stim, 1000 ms ISI | `53` | `Space` (`X` after `A`) | Generator swaps accidental standalone `A -> X` pairs |
+| `n-back` | `NBackTest` | 30 scored trials plus $n$ prime trials, 33% targets, 1500 ms stim, 500 ms ISI | `17` | `Space` (match $n$ back) | $n = 0$ matches `'X'`; includes fallback rules for $n \ge 3$ |
 | `digit-span` | `DigitSpanTest` | `forward` or `backward`, max 14 trials, start span 3, 800 ms digit, 400 ms ISI | `61` | `0-9`, `Backspace`, `Enter` | 2-up / 1-down adaptive staircase (span range `2–9`) |
-| `trail-making` | `TrailMakingTest` | Part `A` (`1..15`) or Part `B` (`1-A-2-B...`, 15 nodes) | `99` | Mouse click on nodes | Minimum Euclidean node spacing $> 13\%$ on $100 \times 100$ canvas |
+| `trail-making` | `TrailMakingTest` | Part `A` (`1..15`) or Part `B` (`1-A-2-B...`, 15 nodes) | `99` | Mouse click on nodes | Minimum Euclidean node spacing > 13% on 100×100 canvas |
 | `reaction-time` | `ReactionTimeTest` | `simple` or `choice`, 20 trials, 1000–2800 ms random ITI, 3000 ms max stim | `7` | `Space` / `ArrowLeft` `ArrowRight` | Ignores `e.repeat`; early ITI presses log `falseStart: true` and `reactionTime: null` without consuming a trial |
 
 ## 6. Metrics & data exports
 
 ### Summary metrics (`src/ui/pages/ResultsPage.js`)
 
-- **Stroop:** overall accuracy, congruent accuracy, incongruent accuracy, mean congruent/incongruent RT, interference effect ($\text{RT}_{\text{incongruent}} - \text{RT}_{\text{congruent}}$).
+- **Stroop:** overall accuracy, congruent accuracy, incongruent accuracy, mean congruent/incongruent RT, interference effect — $\text{RT}(\text{incongruent}) - \text{RT}(\text{congruent})$.
 - **Go / No-Go:** Go accuracy, commission errors (No-Go presses), omission errors (missed Go), correct rejections, mean Go RT, Go RT SD.
 - **CPT-AX:** hit rate, false alarm rate, mean hit RT, accuracy across early / middle / late thirds (vigilance decrement).
-- **N-Back:** hit rate, false alarm rate, misses, sensitivity $d' = z(\text{HR}) - z(\text{FAR})$ (Abramowitz & Stegun rational inverse normal approximation, rates clamped to $[0.01, 0.99]$), mean hit RT, hit RT SD.
+- **N-Back:** hit rate, false alarm rate, misses, sensitivity $d^{\prime} = z(\text{HR}) - z(\text{FAR})$ using the Abramowitz & Stegun rational inverse normal approximation, with rates clamped to $[0.01, 0.99]$, mean hit RT, hit RT SD.
 - **Digit Span:** max span reached, trials correct, mean span.
 - **Reaction Time:** accuracy, mean RT, median RT, RT SD, timeout count.
 - **Trail Making:** total completion time (s), sequence error count.
