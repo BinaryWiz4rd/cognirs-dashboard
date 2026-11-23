@@ -14,9 +14,9 @@ import { BaseTest }     from './BaseTest.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const DEFAULT_CONFIG = {
-    variant:        'forward', // 'forward' | 'backward'
-    maxTrials:      14,
-    startSpan:      3,
+    variant:         'forward', // 'forward' | 'backward'
+    maxTrials:       14,
+    startSpan:       3,
     digitDurationMs: 800,
     digitIsiMs:      400,
     seed:            61,
@@ -26,21 +26,33 @@ export class DigitSpanTest extends BaseTest {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('digit-span', `Digit Span (${cfg.variant})`, cfg);
-        this._rng         = new SeededRandom(cfg.seed);
-        this._span        = cfg.startSpan;
-        this._consecutive = 0;
-        this._sequence    = [];
-        this._response    = [];
-        this._keyFn       = null;
-        this._digitTimer  = null;
-        this._digitIndex  = 0;
-        this._phase       = 'idle';
+        this._rng           = new SeededRandom(cfg.seed);
+        this._span          = cfg.startSpan;
+        this._consecutive   = 0;
+        this._sequence      = [];
+        this._response      = [];
+        this._keyFn         = null;
+        this._digitTimer    = null;
+        this._isiTimer      = null;
+        this._feedbackTimer = null;
+        this._digitIndex    = 0;
+        this._phase         = 'idle';
     }
 
     unmount() {
-        clearTimeout(this._digitTimer);
+        this._phase = 'idle';
+        this._clearTimers();
         this._detachKey();
         super.unmount();
+    }
+
+    _clearTimers() {
+        clearTimeout(this._digitTimer);
+        clearTimeout(this._isiTimer);
+        clearTimeout(this._feedbackTimer);
+        this._digitTimer    = null;
+        this._isiTimer      = null;
+        this._feedbackTimer = null;
     }
 
     _renderInstructions() {
@@ -73,7 +85,7 @@ export class DigitSpanTest extends BaseTest {
     }
 
     _renderDemo() {
-        const isBack    = this.config.variant === 'backward';
+        const isBack     = this.config.variant === 'backward';
         const demoDigits = [4, 7, 2];
         const demoAnswer = isBack ? [2, 7, 4] : [4, 7, 2];
 
@@ -129,12 +141,12 @@ export class DigitSpanTest extends BaseTest {
             if (!card) return;
 
             if (step < DIGIT_TOTAL) {
-                resp.style.display = 'none';
-                num.textContent    = demoDigits[step];
+                resp.style.display     = 'none';
+                num.textContent        = demoDigits[step];
                 card.style.borderColor = '#4a7fd4';
                 card.style.background  = '#ffffff';
                 card.style.visibility  = 'visible';
-                phase.textContent = 'Watch';
+                phase.textContent      = 'Watch';
 
                 this._demoTimeout(() => {
                     num.textContent        = '';
@@ -163,9 +175,8 @@ export class DigitSpanTest extends BaseTest {
                     step = 0;
                 }, 2000);
 
-                step++; // move to idle step so runStep doesn't retrigger mid-reset
+                step++;
             }
-            // step > DIGIT_TOTAL: idle, waiting for reset timeout??
         };
 
         runStep();
@@ -181,6 +192,7 @@ export class DigitSpanTest extends BaseTest {
 
     _nextTrial() {
         if (this._trialIndex >= this.config.maxTrials) {
+            this._phase = 'idle';
             this._done();
             return;
         }
@@ -206,8 +218,10 @@ export class DigitSpanTest extends BaseTest {
     }
 
     _presentNextDigit() {
+        if (this._phase !== 'presentation') return;
+
         if (this._digitIndex >= this._sequence.length) {
-            setTimeout(() => this._startResponsePhase(), this.config.digitIsiMs);
+            this._isiTimer = setTimeout(() => this._startResponsePhase(), this.config.digitIsiMs);
             return;
         }
 
@@ -230,6 +244,7 @@ export class DigitSpanTest extends BaseTest {
     `;
 
         this._digitTimer = setTimeout(() => {
+            if (this._phase !== 'presentation') return;
             const card = document.getElementById('digit-card');
             if (card) {
                 card.classList.remove('digit-card--show');
@@ -237,11 +252,12 @@ export class DigitSpanTest extends BaseTest {
                 if (numEl) numEl.textContent = '';
             }
             this._digitIndex++;
-            setTimeout(() => this._presentNextDigit(), this.config.digitIsiMs);
+            this._isiTimer = setTimeout(() => this._presentNextDigit(), this.config.digitIsiMs);
         }, this.config.digitDurationMs);
     }
 
     _startResponsePhase() {
+        if (this._phase !== 'presentation') return;
         this._phase    = 'response';
         this._response = [];
         const span     = this._sequence.length;
@@ -274,7 +290,7 @@ export class DigitSpanTest extends BaseTest {
 
     _makeResponseKeyHandler() {
         return (e) => {
-            if (this._phase !== 'response') return;
+            if (this._phase !== 'response' || e.repeat) return;
 
             if (e.key >= '0' && e.key <= '9') {
                 e.preventDefault();
@@ -313,7 +329,8 @@ export class DigitSpanTest extends BaseTest {
     }
 
     _scoreResponse() {
-        const isBack = this.config.variant === 'backward';
+        this._phase   = 'feedback';
+        const isBack  = this.config.variant === 'backward';
         const target  = isBack ? [...this._sequence].reverse() : [...this._sequence];
         const correct = target.every((d, i) => d === this._response[i]);
 
@@ -343,8 +360,7 @@ export class DigitSpanTest extends BaseTest {
             b.style.color       = correct ? '#2d9e6b' : '#c4394a';
         });
 
-        this._trialIndex++;
-        setTimeout(() => this._nextTrial(), 700);
+        this._feedbackTimer = setTimeout(() => this._nextTrial(), 700);
     }
 
     _attachKey(fn) {
