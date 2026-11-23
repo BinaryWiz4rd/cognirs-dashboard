@@ -25,14 +25,29 @@ export class FNIRSParser {
     }
 
     /**
-     * Feed raw bytes into the parser.
-     * @param {Uint8Array} bytes
+     * Feed raw binary bytes into the parser.
+     * @param {Uint8Array|ArrayBuffer|ArrayBufferView} bytes
      * @returns {Array<FNIRSSample>} Parsed samples
      */
     feed(bytes) {
-        const combined = new Uint8Array(this._buffer.length + bytes.length);
+        if (!bytes) return [];
+
+        let chunk;
+        if (bytes instanceof Uint8Array) {
+            chunk = bytes;
+        } else if (bytes instanceof ArrayBuffer) {
+            chunk = new Uint8Array(bytes);
+        } else if (ArrayBuffer.isView(bytes)) {
+            chunk = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        } else {
+            throw new TypeError('FNIRSParser.feed() expects a Uint8Array or ArrayBuffer');
+        }
+
+        if (chunk.length === 0) return [];
+
+        const combined = new Uint8Array(this._buffer.length + chunk.length);
         combined.set(this._buffer);
-        combined.set(bytes, this._buffer.length);
+        combined.set(chunk, this._buffer.length);
         this._buffer = combined;
 
         return this._extractPackets();
@@ -61,11 +76,11 @@ export class FNIRSParser {
             if (this._validateChecksum(packet)) {
                 const sample = this._parsePacket(packet);
                 if (sample) samples.push(sample);
+                this._buffer = this._buffer.slice(PACKET_SIZE);
             } else {
-                log.warn('Checksum mismatch — discarding packet');
+                log.warn('Checksum mismatch — discarding byte and resyncing');
+                this._buffer = this._buffer.slice(1);
             }
-
-            this._buffer = this._buffer.slice(PACKET_SIZE);
         }
 
         return samples;
@@ -79,7 +94,7 @@ export class FNIRSParser {
 
     _parsePacket(packet) {
         try {
-            const view = new DataView(packet.buffer, packet.byteOffset);
+            const view = new DataView(packet.buffer, packet.byteOffset, packet.byteLength);
             const timestamp = view.getUint32(2, true);
             const hbo       = view.getFloat32(6, true);
             const hbr       = view.getFloat32(10, true);
@@ -101,6 +116,6 @@ export class FNIRSParser {
  * @typedef {Object} FNIRSSample
  * @property {number} timestamp  - Device timestamp in ms
  * @property {number} hbo        - Oxygenated hemoglobin (μmol/L)
- * @property {number} hbr        - Deoxygenated hemoglobin (μmol/L)
+ * @property {number} hbr        - eoxygenated hemoglobin (μmol/L)
  * @property {number} channel    - Channel index 0–7
  */

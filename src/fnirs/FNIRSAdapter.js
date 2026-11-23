@@ -89,17 +89,16 @@ export class FNIRSAdapter {
     async _readLoop() {
         if (!this._port?.readable) return;
 
-        const decoder = new TextDecoder();
-        this._reader  = this._port.readable.getReader();
+        this._reader = this._port.readable.getReader();
 
         try {
             while (this._isConnected) {
                 const { value, done } = await this._reader.read();
                 if (done) break;
+                if (!value || value.byteLength === 0) continue;
 
                 const receivedAt = performance.now();
-                const textChunk  = decoder.decode(value, { stream: true });
-                const samples    = this._parser.feed(textChunk).map(sample => ({
+                const samples    = this._parser.feed(value).map(sample => ({
                     ...sample,
                     receivedAt,
                 }));
