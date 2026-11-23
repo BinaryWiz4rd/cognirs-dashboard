@@ -61,7 +61,6 @@ def parse_channel_layout(info: Any) -> list[tuple[int, int, str]]:
     if mappings:
         return mappings
 
-    # Default fallback: paired interleaved channels [HbO_0, HbR_0, HbO_1, HbR_1, ...]
     pair_count = n_channels // 2
     fallback: list[tuple[int, int, str]] = []
     for ch_idx in range(pair_count):
@@ -72,7 +71,7 @@ def parse_channel_layout(info: Any) -> list[tuple[int, int, str]]:
 
 def build_sample_frames(
     raw_vector: list[float],
-    device_timestamp_ms: int,
+    device_timestamp_ms: int | float,
     layout: list[tuple[int, int, str]],
 ) -> list[dict[str, Any]]:
     """Converts a raw LSL float vector into normalized COGNIRS channel objects."""
@@ -148,7 +147,7 @@ class LSLWebSocketBridge:
         t = 0.0
 
         while True:
-            ts_ms = round(time.time() * 1000)
+            ts_ms = round(time.time() * 1000, 3)
             frames = [
                 {
                     "timestamp": ts_ms,
@@ -172,7 +171,6 @@ class LSLWebSocketBridge:
             log.info("Searching for LSL stream with type='%s'...", self.stream_type)
             streams = resolve_byprop("type", self.stream_type, timeout=2.0)
             if not streams:
-                # Fallback: look for any stream containing 'corti' or 'fnirs' in its name
                 all_streams = resolve_streams(wait_time=1.5)
                 streams = [
                     s
@@ -201,6 +199,8 @@ class LSLWebSocketBridge:
         return inlet, layout
 
     async def _run_lsl_loop(self) -> None:
+        from pylsl import local_clock
+
         inlet = None
         layout: list[tuple[int, int, str]] = []
 
@@ -217,9 +217,10 @@ class LSLWebSocketBridge:
             try:
                 samples, timestamps = inlet.pull_chunk(timeout=0.0)
                 if timestamps:
+                    clock_offset_s = time.time() - local_clock()
                     batch: list[dict[str, Any]] = []
                     for vec, lsl_ts in zip(samples, timestamps):
-                        ts_ms = round(lsl_ts * 1000)
+                        ts_ms = round((lsl_ts + clock_offset_s) * 1000, 3)
                         batch.extend(build_sample_frames(vec, ts_ms, layout))
                     await self.broadcast(batch)
                 await asyncio.sleep(0.01)

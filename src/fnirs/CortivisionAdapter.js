@@ -1,6 +1,7 @@
 /**
  * WebSocket client adapter for Cortivision PHOTON Cap / CortiView 2 real-time streams.
- * Captures monotonic arrival timestamps (performance.now()) for exact event synchronization.
+ * Captures monotonic arrival timestamps (performance.now()) and preserves exact
+ * inter-sample spacing across batched WebSocket frames.
  */
 
 import { createLogger } from '../core/Logger.js';
@@ -9,12 +10,13 @@ const log = createLogger('CortivisionAdapter');
 
 export class CortivisionAdapter {
     constructor() {
-        this._ws          = null;
-        this._onData      = null;
-        this._onError     = null;
-        this._onClose     = null;
-        this._isConnected = false;
-        this._url         = null;
+        this._ws             = null;
+        this._onData         = null;
+        this._onError        = null;
+        this._onClose        = null;
+        this._isConnected    = false;
+        this._url            = null;
+        this._streamOffsetMs = null;
     }
 
     get isConnected() { return this._isConnected; }
@@ -22,10 +24,11 @@ export class CortivisionAdapter {
     get deviceUrl()   { return this._url; }
 
     async connect({ url = 'ws://127.0.0.1:5732', onData, onError, onClose } = {}) {
-        this._onData  = onData;
-        this._onError = onError;
-        this._onClose = onClose;
-        this._url     = url;
+        this._onData         = onData;
+        this._onError        = onError;
+        this._onClose        = onClose;
+        this._url            = url;
+        this._streamOffsetMs = null;
 
         log.info(`Connecting to Cortivision real-time stream at ${url}...`);
 
@@ -82,20 +85,38 @@ export class CortivisionAdapter {
 
     _processIncomingStream(rawData) {
         try {
-            const receivedAt = performance.now();
-            const data       = JSON.parse(rawData);
-            let normalizedSamples = [];
+            const batchReceivedAt = performance.now();
+            const data            = JSON.parse(rawData);
+            let rawItems          = [];
 
             if (Array.isArray(data)) {
-                normalizedSamples = data.map(s => this._normalizeFrame(s, receivedAt)).filter(Boolean);
+                rawItems = data;
             } else if (data && typeof data === 'object') {
-                if (Array.isArray(data.samples)) {
-                    normalizedSamples = data.samples.map(s => this._normalizeFrame(s, receivedAt)).filter(Boolean);
-                } else {
-                    const sample = this._normalizeFrame(data, receivedAt);
-                    if (sample) normalizedSamples.push(sample);
+                rawItems = Array.isArray(data.samples) ? data.samples : [data];
+            }
+
+            const validTs = rawItems
+                .map(item => (item?.timestamp !== undefined ? Number(item.timestamp) : NaN))
+                .filter(ts => !Number.isNaN(ts));
+
+            if (validTs.length > 0) {
+                const maxDeviceTs     = Math.max(...validTs);
+                const candidateOffset = batchReceivedAt - maxDeviceTs;
+
+                if (
+                    this._streamOffsetMs === null ||
+                    Math.abs(candidateOffset - this._streamOffsetMs) > 1000
+                ) {
+                    this._streamOffsetMs = candidateOffset;
+                } else if (candidateOffset < this._streamOffsetMs) {
+                    // tracking minimum-latency path to filter out WebSocket scheduling jitter
+                    this._streamOffsetMs = candidateOffset;
                 }
             }
+
+            const normalizedSamples = rawItems
+                .map(item => this._normalizeFrame(item, batchReceivedAt))
+                .filter(Boolean);
 
             if (normalizedSamples.length > 0) {
                 this._onData?.(normalizedSamples);
@@ -105,17 +126,24 @@ export class CortivisionAdapter {
         }
     }
 
-    _normalizeFrame(item, receivedAt = performance.now()) {
-        const rawTs = item.timestamp !== undefined ? Number(item.timestamp) : null;
-        const ch    = item.channel ?? item.channelIndex ?? 0;
+    _normalizeFrame(item, batchReceivedAt = performance.now()) {
+        if (!item || typeof item !== 'object') return null;
+
+        const rawTs      = item.timestamp !== undefined ? Number(item.timestamp) : null;
+        const hasValidTs = rawTs !== null && !Number.isNaN(rawTs);
+        const ch         = item.channel ?? item.channelIndex ?? 0;
 
         const hbo = item.hbo !== undefined ? item.hbo : (item.oxy !== undefined ? item.oxy : null);
         const hbr = item.hbr !== undefined ? item.hbr : (item.deoxy !== undefined ? item.deoxy : null);
 
         if (hbo === null || hbr === null) return null;
 
+        const receivedAt = (hasValidTs && this._streamOffsetMs !== null)
+            ? rawTs + this._streamOffsetMs
+            : batchReceivedAt;
+
         return {
-            timestamp:  rawTs !== null && !Number.isNaN(rawTs) ? Math.round(rawTs) : Math.round(receivedAt),
+            timestamp:  hasValidTs ? +rawTs.toFixed(3) : Math.round(batchReceivedAt),
             receivedAt,
             channel:    parseInt(ch, 10),
             hbo:        parseFloat(hbo),
@@ -124,8 +152,9 @@ export class CortivisionAdapter {
     }
 
     _cleanup() {
-        this._ws          = null;
-        this._isConnected = false;
-        this._url         = null;
+        this._ws             = null;
+        this._isConnected    = false;
+        this._url            = null;
+        this._streamOffsetMs = null;
     }
 }
