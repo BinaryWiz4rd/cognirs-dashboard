@@ -30,7 +30,9 @@ class StateManager {
     }
 
     reset() {
+        const prev = { ...this._state };
         this._state = { ...initialState };
+        this._notify(prev, this._state);
     }
 
     _notify(prev, next) {

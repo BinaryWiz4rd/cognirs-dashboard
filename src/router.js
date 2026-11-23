@@ -1,4 +1,5 @@
 import { eventBus, EVENTS } from './core/EventBus.js';
+import { stateManager }     from './core/StateManager.js';
 import { sessionManager }   from './session/SessionManager.js';
 import { renderHomePage }   from './ui/pages/HomePage.js';
 import { renderSetupPage }  from './ui/pages/SetupPage.js';
@@ -16,10 +17,13 @@ export function initRouter(mountEl) {
 
     const navigate = (page) => {
         if (currentRoute === 'test' && page !== 'test' && sessionManager.isActive()) {
+            const confirmed = window.confirm('Abort the active session? Recorded data will be lost.');
+            if (!confirmed) return;
             sessionManager.abort();
         }
 
         currentRoute = page;
+        stateManager.setState({ currentPage: page });
         const renderer = ROUTES[page] ?? ROUTES.home;
         mountEl.innerHTML = '';
         renderer(mountEl);

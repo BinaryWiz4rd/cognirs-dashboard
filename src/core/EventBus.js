@@ -22,13 +22,14 @@ class EventBus {
      * subscribe once
      * @param {string} event
      * @param {Function} callback
+     * @returns {Function} unsubscribe function
      */
     once(event, callback) {
         const wrapper = (...args) => {
-            callback(...args);
             this.off(event, wrapper);
+            callback(...args);
         };
-        this.on(event, wrapper);
+        return this.on(event, wrapper);
     }
 
     /**
@@ -41,7 +42,8 @@ class EventBus {
     }
 
     emit(event, payload) {
-        this._listeners.get(event)?.forEach(cb => {
+        const listeners = [...(this._listeners.get(event) ?? [])];
+        listeners.forEach(cb => {
             try {
                 cb(payload);
             } catch (err) {
@@ -66,26 +68,27 @@ class EventBus {
 export const eventBus = new EventBus();
 
 export const EVENTS = Object.freeze({
-    FNIRS_CONNECTED:    'fnirs:connected',
-    FNIRS_DISCONNECTED: 'fnirs:disconnected',
-    FNIRS_DATA:         'fnirs:data',
-    FNIRS_ERROR:        'fnirs:error',
-    FNIRS_RECORDING_START: 'fnirs:recording:start',
-    FNIRS_RECORDING_STOP:  'fnirs:recording:stop',
+    FNIRS_CONNECTED:          'fnirs:connected',
+    FNIRS_DISCONNECTED:       'fnirs:disconnected',
+    FNIRS_STREAM_INTERRUPTED: 'fnirs:stream:interrupted',
+    FNIRS_DATA:               'fnirs:data',
+    FNIRS_ERROR:              'fnirs:error',
+    FNIRS_RECORDING_START:    'fnirs:recording:start',
+    FNIRS_RECORDING_STOP:     'fnirs:recording:stop',
 
-    SESSION_STARTED:    'session:started',
-    SESSION_ENDED:      'session:ended',
-    SESSION_PAUSED:     'session:paused',
+    SESSION_STARTED:          'session:started',
+    SESSION_ENDED:            'session:ended',
+    SESSION_PAUSED:           'session:paused',
 
-    TEST_STARTED:       'test:started',
-    TEST_ENDED:         'test:ended',
-    TEST_TRIAL_START:   'test:trial:start',
-    TEST_TRIAL_END:     'test:trial:end',
-    TEST_RESPONSE:      'test:response',
+    TEST_STARTED:             'test:started',
+    TEST_ENDED:               'test:ended',
+    TEST_TRIAL_START:         'test:trial:start',
+    TEST_TRIAL_END:           'test:trial:end',
+    TEST_RESPONSE:            'test:response',
 
-    NAVIGATE:           'navigate',
+    NAVIGATE:                 'navigate',
 
-    TOAST:              'ui:toast',
-    MODAL_OPEN:         'ui:modal:open',
-    MODAL_CLOSE:        'ui:modal:close',
+    TOAST:                    'ui:toast',
+    MODAL_OPEN:               'ui:modal:open',
+    MODAL_CLOSE:              'ui:modal:close',
 });

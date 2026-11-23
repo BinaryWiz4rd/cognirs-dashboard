@@ -11,6 +11,17 @@ import { createLogger }     from '../core/Logger.js';
 
 const log = createLogger('SessionManager');
 
+function generateSessionId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+}
+
 class SessionManager {
     constructor() {
         this._session       = null;
@@ -29,22 +40,26 @@ class SessionManager {
      * @param {HTMLElement} opts.container   — DOM element to mount tests into
      */
     begin({ participant, tests, container }) {
+        if (this.isActive()) {
+            this.abort();
+        }
+
         clearTimeout(this._nextTestTimer);
         this._nextTestTimer = null;
 
         this._session = {
-            id:          crypto.randomUUID(),
+            id:          generateSessionId(),
             startTime:   new Date().toISOString(),
             endTime:     null,
             participant,
-            tests:       [],   // { testId, name, results }[]
+            tests:       [],   // { testId, name, config, results }[]
             fnirs:       null,
         };
 
         this._testQueue = [...tests];
         this._container = container;
 
-        stateManager.setState({ participant, session: this._session });
+        stateManager.setState({ participant, session: this._session, currentTest: null });
         fnirsDevice.startRecording();
         eventBus.emit(EVENTS.SESSION_STARTED, this._session);
         log.info('Session started', this._session.id);
@@ -85,7 +100,7 @@ class SessionManager {
 
         this._testQueue = [];
         this._session   = null;
-        stateManager.setState({ session: null });
+        stateManager.setState({ session: null, currentTest: null });
     }
 
     _runNextTest() {
@@ -97,6 +112,7 @@ class SessionManager {
         }
 
         this._currentTest = this._testQueue.shift();
+        stateManager.setState({ currentTest: this._currentTest.id });
 
         this._unsubTest = eventBus.on(EVENTS.TEST_ENDED, ({ testId, results }) => {
             if (!this._currentTest || testId !== this._currentTest.id) return;
@@ -106,10 +122,11 @@ class SessionManager {
             this._session.tests.push({
                 testId,
                 name:    this._currentTest.name,
+                config:  { ...this._currentTest.config },
                 results: results ?? [],
             });
 
-            stateManager.setState({ session: { ...this._session } });
+            stateManager.setState({ session: { ...this._session }, currentTest: null });
             log.info(`Test "${testId}" complete — ${results?.length ?? 0} trials`);
 
             this._currentTest = null;
@@ -131,7 +148,7 @@ class SessionManager {
         this._session.fnirs   = recording;
         this._session.endTime = new Date().toISOString();
 
-        stateManager.setState({ session: { ...this._session } });
+        stateManager.setState({ session: { ...this._session }, currentTest: null });
         eventBus.emit(EVENTS.SESSION_ENDED, this._session);
         log.info('Session ended', this._session.id);
     }
