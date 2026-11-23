@@ -34,6 +34,7 @@ export class NBackTest extends BaseTest {
     }
 
     unmount() {
+        this._phase = 'idle';
         this._clearTimers();
         this._detachKey();
         super.unmount();
@@ -45,7 +46,7 @@ export class NBackTest extends BaseTest {
             0: 'Press <strong>Space</strong> every time you see the letter <strong>X</strong>.',
             1: 'Press <strong>Space</strong> when the current letter is the same as the <strong>previous</strong> one.',
             2: 'Press <strong>Space</strong> when the current letter matches the one shown <strong>two letters ago</strong>.',
-        }[n];
+        }[n] ?? `Press <strong>Space</strong> when the current letter matches the one shown <strong>${n} letters ago</strong>.`;
 
         this._buildInstructionShell({
             title:    `${n}-Back Task`,
@@ -168,6 +169,7 @@ export class NBackTest extends BaseTest {
     }
 
     _nextStimulus() {
+        if (this._unmounted) return;
         if (this._trialIndex >= this._sequence.length) {
             this._phase = 'idle';
             this._detachKey();
@@ -190,7 +192,7 @@ export class NBackTest extends BaseTest {
     }
 
     _onStimulusEnd(stimulus) {
-        if (this._phase !== 'stim') return;
+        if (this._unmounted || this._phase !== 'stim') return;
         this._phase = 'isi';
         this._detachKey();
 
@@ -210,6 +212,7 @@ export class NBackTest extends BaseTest {
         }
 
         this._isiTimer = setTimeout(() => {
+            if (this._unmounted) return;
             this._trialIndex++;
             this._nextStimulus();
         }, this.config.isiMs);

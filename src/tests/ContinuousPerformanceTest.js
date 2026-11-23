@@ -142,7 +142,7 @@ export class ContinuousPerformanceTest extends BaseTest {
 
     _generateSequence() {
         const total     = this.config.trials;
-        const nTargets  = Math.round(total * this.config.axRatio);
+        const nTargets  = Math.min(Math.floor(total / 2), Math.round(total * this.config.axRatio));
         const remaining = Math.max(0, total - 2 * nTargets);
         const nCueLures = Math.min(Math.round(total * 0.08), Math.floor(remaining / 2));
         const nXLures   = Math.min(Math.round(total * 0.08), remaining - nCueLures);
@@ -193,6 +193,7 @@ export class ContinuousPerformanceTest extends BaseTest {
     }
 
     _nextStimulus() {
+        if (this._unmounted) return;
         if (this._trialIndex >= this._sequence.length) {
             this._phase = 'idle';
             this._detachKey();
@@ -219,13 +220,13 @@ export class ContinuousPerformanceTest extends BaseTest {
     }
 
     _onStimulusHide() {
-        if (this._phase !== 'stim') return;
+        if (this._unmounted || this._phase !== 'stim') return;
         this._phase = 'isi';
         this._renderISI();
     }
 
     _onTrialComplete(stimulus) {
-        if (this._phase !== 'stim' && this._phase !== 'isi') return;
+        if (this._unmounted || (this._phase !== 'stim' && this._phase !== 'isi')) return;
         this._detachKey();
 
         // Only record an unresponded outcome if the participant did not press Space.

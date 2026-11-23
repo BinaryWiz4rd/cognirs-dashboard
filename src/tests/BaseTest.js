@@ -269,7 +269,7 @@ export class BaseTest {
     }
 
     _endTrial(result) {
-        const rt   = this._timer.elapsed();
+        const rt   = result.reactionTime !== undefined ? result.reactionTime : this._timer.elapsed();
         const full = { ...result, reactionTime: rt, trialIndex: this._trialIndex };
         this._results.push(full);
         this._trialIndex++;

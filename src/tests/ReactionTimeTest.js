@@ -30,6 +30,7 @@ export class ReactionTimeTest extends BaseTest {
     }
 
     unmount() {
+        this._phase = 'idle';
         this._clearTimers();
         this._detachKey();
         super.unmount();
@@ -116,6 +117,7 @@ export class ReactionTimeTest extends BaseTest {
     }
 
     _startNextTrial() {
+        if (this._unmounted) return;
         if (this._trialIndex >= this.config.trials) {
             this._phase = 'idle';
             this._detachKey();
@@ -127,7 +129,7 @@ export class ReactionTimeTest extends BaseTest {
         this._itiStartedAt = performance.now();
         this._currentTrial = {
             variant: this.config.variant,
-            side:    this._rng.pick(['left', 'right']),
+            side:    this.config.variant === 'simple' ? 'center' : this._rng.pick(['left', 'right']),
         };
 
         this._renderWaitScreen();
@@ -138,7 +140,7 @@ export class ReactionTimeTest extends BaseTest {
     }
 
     _showStimulus() {
-        if (this._phase !== 'iti') return;
+        if (this._unmounted || this._phase !== 'iti') return;
         this._phase = 'stimulus';
         this._detachKey();
 
@@ -155,7 +157,7 @@ export class ReactionTimeTest extends BaseTest {
         this._attachKey(this._makeResponseHandler());
 
         this._stimTimer = setTimeout(() => {
-            if (this._phase !== 'stimulus') return;
+            if (this._unmounted || this._phase !== 'stimulus') return;
             this._detachKey();
             this._recordAndContinue({ key: null, timedOut: true });
         }, this.config.stimMaxMs);
@@ -183,7 +185,7 @@ export class ReactionTimeTest extends BaseTest {
                 falseStartCount: this._falseStarts,
                 itiElapsedMs,
                 side:            this._currentTrial.side,
-                rt:              null,
+                reactionTime:    null,
             });
             // BaseTest._endTrial increments _trialIndex; undo so false starts don't consume stimulus trials
             this._trialIndex--;
@@ -220,13 +222,19 @@ export class ReactionTimeTest extends BaseTest {
                 ? key === 'space'
                 : key === this._currentTrial.side;
 
-        this._endTrial({
+        const trialPayload = {
             key,
             correct,
             timedOut,
             falseStart: false,
             side:       this._currentTrial.side,
-        });
+        };
+
+        if (timedOut) {
+            trialPayload.reactionTime = null;
+        }
+
+        this._endTrial(trialPayload);
 
         const circle = document.getElementById('rt-circle');
         if (circle) {
