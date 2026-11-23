@@ -11,28 +11,34 @@ import { createLogger }     from '../core/Logger.js';
 
 export class BaseTest {
     constructor(id, name, config = {}) {
-        this.id          = id;
-        this.name        = name;
-        this.config      = config;
-        this._timer      = new Timer();
-        this._results    = [];
-        this._trialIndex = 0;
-        this._container  = null;
-        this._log        = createLogger(`Test:${id}`);
-        this._demoTimers = [];
+        this.id                   = id;
+        this.name                 = name;
+        this.config               = config;
+        this._timer               = new Timer();
+        this._results             = [];
+        this._trialIndex          = 0;
+        this._container           = null;
+        this._log                 = createLogger(`Test:${id}`);
+        this._demoTimers          = [];
+        this._countdownTimer      = null;
+        this._countdownAnimTimer  = null;
+        this._unmounted           = false;
     }
 
     get results() { return [...this._results]; }
 
     mount(container) {
-        this._container = container;
+        this._unmounted           = false;
+        this._container           = container;
         this._container.innerHTML = '';
         this._container.className = 'test-container anim-fade-in';
         this._renderInstructions();
     }
 
     unmount() {
+        this._unmounted = true;
         this._stopDemoLoop();
+        this._clearCountdown();
         if (this._container) this._container.innerHTML = '';
     }
 
@@ -44,13 +50,16 @@ export class BaseTest {
 
     _goToDemo() {
         this._stopDemoLoop();
+        this._clearCountdown();
         this._container.innerHTML = '';
         this._renderDemo();
     }
 
     _goToTest() {
         this._stopDemoLoop();
+        this._clearCountdown();
         this._renderCountdown(3, () => {
+            if (this._unmounted) return;
             this._trialIndex = 0;
             this._results    = [];
             this.setup();
@@ -246,6 +255,13 @@ export class BaseTest {
         this._demoTimers = [];
     }
 
+    _clearCountdown() {
+        clearInterval(this._countdownTimer);
+        clearTimeout(this._countdownAnimTimer);
+        this._countdownTimer     = null;
+        this._countdownAnimTimer = null;
+    }
+
     _startTrial(trial) {
         this._timer.start();
         eventBus.emit(EVENTS.TEST_TRIAL_START, { testId: this.id, trial });
@@ -267,6 +283,7 @@ export class BaseTest {
     }
 
     _renderCountdown(seconds, callback) {
+        this._clearCountdown();
         let remaining = seconds;
         this._container.innerHTML = `
       <div style="
@@ -295,18 +312,27 @@ export class BaseTest {
       </div>
     `;
 
-        const tick = setInterval(() => {
+        this._countdownTimer = setInterval(() => {
+            if (this._unmounted) {
+                this._clearCountdown();
+                return;
+            }
             remaining--;
             const el = document.getElementById('cd-num');
-            if (!el) { clearInterval(tick); return; }
+            if (!el) {
+                this._clearCountdown();
+                return;
+            }
             if (remaining <= 0) {
-                clearInterval(tick);
+                this._clearCountdown();
                 callback();
             } else {
                 el.style.transform = 'scale(1.25)';
                 el.style.opacity   = '0.5';
                 el.textContent     = remaining;
-                setTimeout(() => {
+                clearTimeout(this._countdownAnimTimer);
+                this._countdownAnimTimer = setTimeout(() => {
+                    if (this._unmounted) return;
                     el.style.transform = 'scale(1)';
                     el.style.opacity   = '1';
                 }, 80);

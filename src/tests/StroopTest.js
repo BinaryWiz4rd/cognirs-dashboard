@@ -24,13 +24,17 @@ const DEFAULT_CONFIG = {
 export class StroopTest extends BaseTest {
     constructor(config = {}) {
         super('stroop', 'Stroop Color–Word Test', { ...DEFAULT_CONFIG, ...config });
-        this._rng    = new SeededRandom(this.config.seed);
-        this._trials = [];
+        this._rng          = new SeededRandom(this.config.seed);
+        this._trials       = [];
         this._trialTimeout = null;
+        this._itiTimeout   = null;
     }
 
     unmount() {
         clearTimeout(this._trialTimeout);
+        clearTimeout(this._itiTimeout);
+        this._trialTimeout = null;
+        this._itiTimeout   = null;
         super.unmount();
     }
 
@@ -124,7 +128,7 @@ export class StroopTest extends BaseTest {
     }
 
     _generateTrials() {
-        const total     = this.config.trials;
+        const total      = this.config.trials;
         const nCongruent = Math.round(total * this.config.congruentRatio);
         return this._rng.shuffle(
             Array.from({ length: total }, (_, i) => {
@@ -139,6 +143,7 @@ export class StroopTest extends BaseTest {
     }
 
     _nextTrial() {
+        if (this._unmounted) return;
         if (this._trialIndex >= this._trials.length) {
             this._done();
             return;
@@ -176,10 +181,12 @@ export class StroopTest extends BaseTest {
         this._container.querySelectorAll('.stroop-choice-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 clearTimeout(this._trialTimeout);
+                this._trialTimeout = null;
                 this.processResponse({ response: btn.dataset.color, trial });
             });
         });
 
+        clearTimeout(this._trialTimeout);
         this._trialTimeout = setTimeout(
             () => this.processResponse({ response: null, trial, timedOut: true }),
             this.config.displayMs
@@ -187,6 +194,7 @@ export class StroopTest extends BaseTest {
     }
 
     processResponse({ response, trial, timedOut = false }) {
+        if (this._unmounted) return;
         const correct = !timedOut && response === trial.inkColor.name;
         this._endTrial({ response, correct, timedOut, congruent: trial.congruent });
 
@@ -204,6 +212,7 @@ export class StroopTest extends BaseTest {
             }
         });
 
-        setTimeout(() => this._nextTrial(), this.config.itiMs);
+        clearTimeout(this._itiTimeout);
+        this._itiTimeout = setTimeout(() => this._nextTrial(), this.config.itiMs);
     }
 }

@@ -33,17 +33,19 @@ export class GoNoGoTest extends BaseTest {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('go-no-go', 'Go / No-Go Task', cfg);
-        this._rng       = new SeededRandom(cfg.seed);
-        this._sequence  = [];
-        this._keyFn     = null;
-        this._stimTimer = null;
-        this._respTimer  = null;
-        this._isiTimer  = null;
-        this._phase     = 'idle';
-        this._responded = false;
+        this._rng           = new SeededRandom(cfg.seed);
+        this._sequence      = [];
+        this._keyFn         = null;
+        this._stimTimer     = null;
+        this._respTimer     = null;
+        this._isiTimer      = null;
+        this._feedbackTimer = null;
+        this._phase         = 'idle';
+        this._responded     = false;
     }
 
     unmount() {
+        this._phase = 'idle';
         this._clearTimers();
         this._detachKey();
         super.unmount();
@@ -146,20 +148,23 @@ export class GoNoGoTest extends BaseTest {
     }
 
     _startITI() {
+        if (this._unmounted) return;
         if (this._trialIndex >= this._sequence.length) {
+            this._phase = 'idle';
             this._done();
             return;
         }
-        this._phase    = 'iti';
+        this._phase     = 'iti';
         this._responded = false;
         this._renderFixation();
 
         const delay = this._rng.nextInt(this.config.minIsiMs, this.config.maxIsiMs);
+        clearTimeout(this._isiTimer);
         this._isiTimer = setTimeout(() => this._showStimulus(), delay);
     }
 
     _showStimulus() {
-        if (this._phase !== 'iti') return;
+        if (this._unmounted || this._phase !== 'iti') return;
         this._phase = 'stim';
 
         const trial = this._sequence[this._trialIndex];
@@ -171,6 +176,7 @@ export class GoNoGoTest extends BaseTest {
             : this._makeNoGoHandler(trial)
         );
 
+        clearTimeout(this._stimTimer);
         this._stimTimer = setTimeout(() => {
             const circle = document.getElementById('gng-circle');
             if (circle && this._phase === 'stim') {
@@ -178,6 +184,7 @@ export class GoNoGoTest extends BaseTest {
             }
         }, this.config.stimMs);
 
+        clearTimeout(this._respTimer);
         this._respTimer = setTimeout(
             () => this._onTrialTimeout(trial),
             this.config.stimMs + this.config.responseMs
@@ -185,7 +192,7 @@ export class GoNoGoTest extends BaseTest {
     }
 
     _onTrialTimeout(trial) {
-        if (this._phase !== 'stim') return;
+        if (this._unmounted || this._phase !== 'stim') return;
         this._detachKey();
         this._phase = 'iti';
 
@@ -227,7 +234,9 @@ export class GoNoGoTest extends BaseTest {
                 circle.className = 'gng-circle gng-circle--pressed';
             }
 
-            setTimeout(() => {
+            clearTimeout(this._feedbackTimer);
+            this._feedbackTimer = setTimeout(() => {
+                if (this._unmounted || this._phase === 'idle') return;
                 this._trialIndex++;
                 this._startITI();
             }, 350);
@@ -258,7 +267,9 @@ export class GoNoGoTest extends BaseTest {
                 circle.className = 'gng-circle gng-circle--commission';
             }
 
-            setTimeout(() => {
+            clearTimeout(this._feedbackTimer);
+            this._feedbackTimer = setTimeout(() => {
+                if (this._unmounted || this._phase === 'idle') return;
                 this._trialIndex++;
                 this._startITI();
             }, 400);
@@ -314,8 +325,10 @@ export class GoNoGoTest extends BaseTest {
         clearTimeout(this._stimTimer);
         clearTimeout(this._respTimer);
         clearTimeout(this._isiTimer);
-        this._stimTimer = null;
-        this._respTimer = null;
-        this._isiTimer  = null;
+        clearTimeout(this._feedbackTimer);
+        this._stimTimer     = null;
+        this._respTimer     = null;
+        this._isiTimer      = null;
+        this._feedbackTimer = null;
     }
 }
