@@ -17,10 +17,11 @@ export const SessionExporter = {
             'sessionId', 'participantId', 'group', 'sex', 'age',
             'testId', 'testName', 'variant', 'nLevel', 'trialIndex',
             'correct', 'reactionTime_ms', 'timedOut',
+            'falseStart', 'itiElapsedMs', 'errors',
             'isTarget', 'isGo', 'congruent',
             'span', 'hit', 'miss', 'falseAlarm',
             'commission', 'omission', 'correctRejection',
-            'key', 'side', 'letter',
+            'key', 'side', 'letter', 'response',
         ]];
 
         session.tests.forEach((testEntry) => {
@@ -28,6 +29,9 @@ export const SessionExporter = {
             results.forEach((r, i) => {
                 const nLevel  = _resolveNLevel(testEntry, r);
                 const variant = _resolveVariant(testEntry, r, nLevel);
+                const responseVal = Array.isArray(r.response)
+                    ? r.response.join('-')
+                    : (r.response ?? '');
 
                 rows.push([
                     session.id,
@@ -43,6 +47,9 @@ export const SessionExporter = {
                     _bool(r.correct),
                     r.reactionTime != null ? +r.reactionTime.toFixed(2) : -1,
                     _bool(r.timedOut),
+                    _bool(r.falseStart),
+                    r.itiElapsedMs ?? '',
+                    r.errors ?? '',
                     _bool(r.isTarget),
                     _bool(r.isGo),
                     _bool(r.congruent),
@@ -56,6 +63,7 @@ export const SessionExporter = {
                     r.key ?? '',
                     r.side ?? '',
                     r.letter ?? '',
+                    responseVal,
                 ].map(_escapeCSV));
             });
         });
@@ -167,5 +175,5 @@ function _download(filename, content, mimeType) {
     const url  = URL.createObjectURL(blob);
     const a    = Object.assign(document.createElement('a'), { href: url, download: filename });
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

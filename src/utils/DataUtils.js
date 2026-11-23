@@ -27,8 +27,13 @@ export const DataUtils = {
     },
 
     normalize(arr) {
-        const min = Math.min(...arr);
-        const max = Math.max(...arr);
+        if (!arr.length) return [];
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i] < min) min = arr[i];
+            if (arr[i] > max) max = arr[i];
+        }
         const range = max - min || 1;
         return arr.map(v => (v - min) / range);
     },
