@@ -78,3 +78,7 @@ npm run preview
 - **Attention & inhibition:** Stroop Color–Word, Go / No-Go, Continuous Performance Test (`CPT-AX`)
 - **Working memory:** N-Back (`0-Back`, `1-Back`, `2-Back`), Digit Span (`Forward`, `Backward`)
 - **Executive function:** Trail Making Test (`Part A`, `Part B`), Reaction Time (`Simple`, `Choice`)
+
+## Documentation
+
+For the LSL-to-WebSocket bridge setup, clock synchronization, binary packet format, and export schemas, see [docs/TECHNICAL.md](docs/TECHNICAL.md).
