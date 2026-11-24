@@ -1,5 +1,4 @@
 /**
- *
  * Renders per-test result cards with all relevant outcome metrics.
  * Each test type has a specialised metric set matching what appears
  * in the fNIRS + ADHD literature.
@@ -28,12 +27,12 @@ const METRIC_BUILDERS = {
         const cong     = hits.filter(r => r.congruent);
         const incong   = hits.filter(r => !r.congruent);
         return [
-            { label: 'Overall accuracy',     value: pct(results, r => r.correct) },
-            { label: 'Congruent accuracy',   value: pct(cong,    r => r.correct) },
-            { label: 'Incongruent accuracy', value: pct(incong,  r => r.correct) },
+            { label: 'Overall accuracy',      value: pct(results, r => r.correct) },
+            { label: 'Congruent accuracy',    value: pct(cong,    r => r.correct) },
+            { label: 'Incongruent accuracy',  value: pct(incong,  r => r.correct) },
             { label: 'Mean RT (congruent)',   value: DataUtils.formatMs(meanRT(cong))   },
             { label: 'Mean RT (incongruent)', value: DataUtils.formatMs(meanRT(incong)) },
-            { label: 'Interference effect',  value: DataUtils.formatMs(meanRT(incong) - meanRT(cong)), note: 'RT incongruent − congruent' },
+            { label: 'Interference effect',   value: DataUtils.formatMs(meanRT(incong) - meanRT(cong)), note: 'RT incongruent − congruent' },
         ];
     },
 
@@ -44,12 +43,12 @@ const METRIC_BUILDERS = {
         const omit  = go.filter(r => r.omission);       // missed Go
         const cr    = nogo.filter(r => r.correctRejection);
         return [
-            { label: 'Go accuracy',            value: pct(go,   r => r.correct) },
-            { label: 'Commission errors',      value: `${comm.length} / ${nogo.length}`, note: 'Failed inhibitions (No-Go presses)' },
-            { label: 'Omission errors',        value: `${omit.length} / ${go.length}`,   note: 'Missed Go responses' },
-            { label: 'Correct rejections',     value: `${cr.length} / ${nogo.length}` },
-            { label: 'Mean Go RT',             value: DataUtils.formatMs(meanRT(go.filter(r => r.correct))) },
-            { label: 'RT variability (SD)',    value: DataUtils.formatMs(DataUtils.std(go.filter(r => !r.timedOut && r.reactionTime).map(r => r.reactionTime))) },
+            { label: 'Go accuracy',         value: pct(go,   r => r.correct) },
+            { label: 'Commission errors',   value: `${comm.length} / ${nogo.length}`, note: 'Failed inhibitions (No-Go presses)' },
+            { label: 'Omission errors',     value: `${omit.length} / ${go.length}`,   note: 'Missed Go responses' },
+            { label: 'Correct rejections',  value: `${cr.length} / ${nogo.length}` },
+            { label: 'Mean Go RT',          value: DataUtils.formatMs(meanRT(go.filter(r => r.correct))) },
+            { label: 'RT variability (SD)', value: DataUtils.formatMs(DataUtils.std(go.filter(r => !r.timedOut && r.reactionTime).map(r => r.reactionTime))) },
         ];
     },
 
@@ -77,10 +76,10 @@ const METRIC_BUILDERS = {
         const far = fas.length  / Math.max(1, fas.length + crs.length);
         const dp  = zScore(clamp(hr, 0.01, 0.99)) - zScore(clamp(far, 0.01, 0.99));
         return [
-            { label: 'Hit rate',           value: `${Math.round(hr * 100)}%` },
-            { label: 'False alarm rate',   value: `${Math.round(far * 100)}%` },
-            { label: 'Misses',             value: misses.length },
-            { label: "d′ (sensitivity)",   value: dp.toFixed(2), note: 'Higher = better discrimination' },
+            { label: 'Hit rate',            value: `${Math.round(hr * 100)}%` },
+            { label: 'False alarm rate',    value: `${Math.round(far * 100)}%` },
+            { label: 'Misses',              value: misses.length },
+            { label: "d′ (sensitivity)",    value: dp.toFixed(2), note: 'Higher = better discrimination' },
             { label: 'Mean RT (hits)',      value: DataUtils.formatMs(meanRT(hits)) },
             { label: 'RT variability (SD)', value: DataUtils.formatMs(DataUtils.std(hits.map(r => r.reactionTime))) },
         ];
@@ -91,40 +90,40 @@ const METRIC_BUILDERS = {
         const spans   = results.map(r => r.span);
         const maxSpan = Math.max(...spans, 0);
         return [
-            { label: 'Max span reached',  value: maxSpan },
-            { label: 'Trials correct',    value: `${correct.length} / ${results.length}` },
-            { label: 'Mean span',         value: DataUtils.mean(spans).toFixed(1) },
+            { label: 'Max span reached', value: maxSpan },
+            { label: 'Trials correct',   value: `${correct.length} / ${results.length}` },
+            { label: 'Mean span',        value: DataUtils.mean(spans).toFixed(1) },
         ];
     },
 
     'reaction-time': (results) => {
         const hits = results.filter(r => r.correct && !r.timedOut);
         return [
-            { label: 'Accuracy',          value: pct(results, r => r.correct) },
-            { label: 'Mean RT',           value: DataUtils.formatMs(meanRT(hits)) },
-            { label: 'Median RT',         value: DataUtils.formatMs(DataUtils.median(hits.map(r => r.reactionTime))) },
+            { label: 'Accuracy',            value: pct(results, r => r.correct) },
+            { label: 'Mean RT',             value: DataUtils.formatMs(meanRT(hits)) },
+            { label: 'Median RT',           value: DataUtils.formatMs(DataUtils.median(hits.map(r => r.reactionTime))) },
             { label: 'RT variability (SD)', value: DataUtils.formatMs(DataUtils.std(hits.map(r => r.reactionTime))) },
-            { label: 'Timeouts',          value: results.filter(r => r.timedOut).length },
+            { label: 'Timeouts',            value: results.filter(r => r.timedOut).length },
         ];
     },
 
     'trail-making': (results) => {
         const r = results[0] ?? {};
         return [
-            { label: 'Completion time',  value: r.totalTime ? `${(r.totalTime / 1000).toFixed(2)} s` : '—' },
-            { label: 'Errors',           value: r.errors ?? '—' },
+            { label: 'Completion time', value: r.totalTime ? `${(r.totalTime / 1000).toFixed(2)} s` : '—' },
+            { label: 'Errors',          value: r.errors ?? '—' },
         ];
     },
 };
 
 const TEST_LABELS = {
-    'stroop':      'Stroop Color–Word Test',
-    'go-no-go':   'Go / No-Go Task',
-    'cpt':         'Continuous Performance Test',
-    'n-back':      'N-Back Task',
-    'digit-span':  'Digit Span',
-    'reaction-time':'Reaction Time',
-    'trail-making':'Trail Making Test',
+    'stroop':        'Stroop Color–Word Test',
+    'go-no-go':      'Go / No-Go Task',
+    'cpt':           'Continuous Performance Test',
+    'n-back':        'N-Back Task',
+    'digit-span':    'Digit Span',
+    'reaction-time': 'Reaction Time',
+    'trail-making':  'Trail Making Test',
 };
 
 export function renderResultsPage(mountEl) {
@@ -186,10 +185,10 @@ export function renderResultsPage(mountEl) {
         </div>
       </div>
 
-      ${tests.map(({ testId, results }, i) => {
-        const label    = TEST_LABELS[testId] ?? testId;
-        const builder  = METRIC_BUILDERS[testId];
-        const metrics  = builder ? builder(results) : [];
+      ${tests.map(({ testId, name, results }, i) => {
+        const label   = name || TEST_LABELS[testId] || testId;
+        const builder = METRIC_BUILDERS[testId];
+        const metrics = builder ? builder(results) : [];
 
         return `
           <div class="card results-test-card anim-slide-up anim-d${Math.min(i + 1, 5)}" style="margin-bottom:var(--space-md);">

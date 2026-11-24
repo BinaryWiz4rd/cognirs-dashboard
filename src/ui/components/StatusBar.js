@@ -15,8 +15,9 @@ const STATUS_THEMES = {
 };
 
 export function renderStatusBar(mountEl) {
-    let sampleCount = 0;
-    let isOpen      = true;
+    let sampleCount   = 0;
+    let isOpen        = true;
+    let lastRenderKey = '';
 
     function getSourceLabel() {
         if (fnirsDevice.isSimulated) return '50 Hz Simulator';
@@ -24,10 +25,15 @@ export function renderStatusBar(mountEl) {
         return 'WebSerial COM Port';
     }
 
-    function render() {
+    function render(force = false) {
         const state         = stateManager.getState();
         const currentStatus = state.fnirsStatus || 'disconnected';
         const currentMode   = state.fnirsMode || 'cortivision';
+        const renderKey     = `${currentStatus}|${currentMode}|${isOpen}|${fnirsDevice.isSimulated}`;
+
+        if (!force && renderKey === lastRenderKey) return;
+        lastRenderKey = renderKey;
+
         const config        = STATUS_THEMES[currentStatus] || STATUS_THEMES.disconnected;
         const canSwitchMode = currentStatus === 'disconnected' || currentStatus === 'error';
 
@@ -97,7 +103,7 @@ export function renderStatusBar(mountEl) {
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => {
                 isOpen = !isOpen;
-                render();
+                render(true);
             });
         }
 
@@ -139,18 +145,25 @@ export function renderStatusBar(mountEl) {
         }
     }
 
-    render();
-    stateManager.subscribe(render);
+    render(true);
 
-    eventBus.on(EVENTS.FNIRS_RECORDING_START, () => {
-        sampleCount = 0;
-    });
+    const unsubs = [
+        stateManager.subscribe(() => render(false)),
+        eventBus.on(EVENTS.FNIRS_RECORDING_START, () => {
+            sampleCount = 0;
+            const displayElement = mountEl.querySelector('.data-counter__value');
+            if (displayElement) displayElement.textContent = '0';
+        }),
+        eventBus.on(EVENTS.FNIRS_DATA, (samples) => {
+            sampleCount += samples.length;
+            const displayElement = mountEl.querySelector('.data-counter__value');
+            if (displayElement) {
+                displayElement.textContent = sampleCount.toLocaleString();
+            }
+        }),
+    ];
 
-    eventBus.on(EVENTS.FNIRS_DATA, (samples) => {
-        sampleCount += samples.length;
-        const displayElement = mountEl.querySelector('.data-counter__value');
-        if (displayElement) {
-            displayElement.textContent = sampleCount.toLocaleString();
-        }
-    });
+    return () => {
+        unsubs.forEach(fn => fn());
+    };
 }

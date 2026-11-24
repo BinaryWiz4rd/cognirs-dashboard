@@ -4,18 +4,18 @@
  * and cognitive test selection.
  */
 
-import { eventBus, EVENTS }            from '../../core/EventBus.js';
-import { sessionManager }              from '../../session/SessionManager.js';
-import { StroopTest }                  from '../../tests/StroopTest.js';
-import { TrailMakingTest }             from '../../tests/TrailMakingTest.js';
-import { ReactionTimeTest }            from '../../tests/ReactionTimeTest.js';
-import { NBackTest }                   from '../../tests/NBackTest.js';
-import { GoNoGoTest }                  from '../../tests/GoNoGoTest.js';
-import { ContinuousPerformanceTest }   from '../../tests/ContinuousPerformanceTest.js';
-import { DigitSpanTest }               from '../../tests/DigitSpanTest.js';
-import { fnirsDevice }                 from '../../fnirs/FNIRSDevice.js';
-import { stateManager }                from '../../core/StateManager.js';
-import { toast }                       from '../components/Toast.js';
+import { eventBus, EVENTS }          from '../../core/EventBus.js';
+import { sessionManager }            from '../../session/SessionManager.js';
+import { StroopTest }                from '../../tests/StroopTest.js';
+import { TrailMakingTest }           from '../../tests/TrailMakingTest.js';
+import { ReactionTimeTest }          from '../../tests/ReactionTimeTest.js';
+import { NBackTest }                 from '../../tests/NBackTest.js';
+import { GoNoGoTest }                from '../../tests/GoNoGoTest.js';
+import { ContinuousPerformanceTest } from '../../tests/ContinuousPerformanceTest.js';
+import { DigitSpanTest }             from '../../tests/DigitSpanTest.js';
+import { fnirsDevice }               from '../../fnirs/FNIRSDevice.js';
+import { stateManager }              from '../../core/StateManager.js';
+import { toast }                     from '../components/Toast.js';
 
 const TEST_REGISTRY = [
     {
@@ -148,7 +148,7 @@ export function renderSetupPage(mountEl) {
               </div>
               <div class="form-group">
                 <label class="form-label" for="p-age">Age</label>
-                <input class="input" id="p-age" type="number" min="6" max="99" placeholder="Years" />
+                <input class="input" id="p-age" type="number" min="6" max="99" placeholder="Years (6–99)" />
               </div>
               <div class="form-group">
                 <label class="form-label" for="p-group">Group</label>
@@ -237,6 +237,12 @@ export function renderSetupPage(mountEl) {
 
     let unsubState = null;
 
+    const getConnectedLabel = (mode) => {
+        if (fnirsDevice.isSimulated || mode === 'simulator') return 'Simulation mode (50 Hz)';
+        if (mode === 'serial') return 'WebSerial COM connected';
+        return 'Cortivision LSL connected';
+    };
+
     const updateFnirsUI = () => {
         const badgeEl = document.getElementById('fnirs-badge');
         if (!badgeEl) {
@@ -250,9 +256,9 @@ export function renderSetupPage(mountEl) {
         const map = {
             disconnected: ['badge--neutral', 'Not connected'],
             connecting:   ['badge--warning', 'Connecting…'],
-            connected:    ['badge--success', fnirsDevice.isSimulated ? 'Simulation mode (50 Hz)' : 'Cortivision LSL connected'],
+            connected:    ['badge--success', getConnectedLabel(fnirsMode)],
             recording:    ['badge--success', 'Recording active'],
-            error:        ['badge--danger',  'Bridge unreachable'],
+            error:        ['badge--danger',  'Connection error'],
         };
 
         const [cls, label] = map[fnirsStatus] ?? map.disconnected;
@@ -301,19 +307,17 @@ export function renderSetupPage(mountEl) {
         try {
             fnirsDevice.setMode(selectedMode);
             await fnirsDevice.connect({ url });
-            toast(
-                fnirsDevice.isSimulated
-                    ? '50 Hz simulation stream active'
-                    : `Connected to Cortivision LSL bridge (${url})`,
-                fnirsDevice.isSimulated ? 'warning' : 'success'
-            );
-        } catch {
-            toast(
-                selectedMode === 'cortivision'
-                    ? `Could not connect to LSL bridge at ${url}`
-                    : 'Could not start fNIRS stream',
-                'error'
-            );
+            const successMsg = fnirsDevice.isSimulated
+                ? '50 Hz simulation stream active'
+                : selectedMode === 'serial'
+                    ? 'Connected to WebSerial fNIRS port'
+                    : `Connected to Cortivision LSL bridge (${url})`;
+            toast(successMsg, fnirsDevice.isSimulated ? 'warning' : 'success');
+        } catch (err) {
+            const errMsg = selectedMode === 'cortivision'
+                ? `Could not connect to LSL bridge at ${url}`
+                : err?.message || 'Could not start fNIRS stream';
+            toast(errMsg, 'error');
         }
     });
 
@@ -326,14 +330,21 @@ export function renderSetupPage(mountEl) {
     });
 
     document.getElementById('setup-begin').addEventListener('click', () => {
-        const id    = document.getElementById('p-id').value.trim();
-        const age   = parseInt(document.getElementById('p-age').value, 10);
-        const group = document.getElementById('p-group').value;
-        const sex   = document.getElementById('p-sex').value;
-        const notes = document.getElementById('p-notes').value.trim();
+        const id     = document.getElementById('p-id').value.trim();
+        const ageRaw = document.getElementById('p-age').value.trim();
+        const age    = Number(ageRaw);
+        const group  = document.getElementById('p-group').value;
+        const sex    = document.getElementById('p-sex').value;
+        const notes  = document.getElementById('p-notes').value.trim();
 
-        if (!id)  { toast('Please enter a Participant ID', 'error'); return; }
-        if (!age) { toast('Please enter participant age',  'error'); return; }
+        if (!id) {
+            toast('Please enter a Participant ID', 'error');
+            return;
+        }
+        if (!/^\d+$/.test(ageRaw) || !Number.isInteger(age) || age < 6 || age > 99) {
+            toast('Please enter a valid age between 6 and 99', 'error');
+            return;
+        }
 
         const selected = [...document.querySelectorAll('.test-checkbox:checked')].map(c => c.value);
         if (!selected.length) { toast('Select at least one test', 'error'); return; }

@@ -9,7 +9,8 @@ import { stateManager }     from '../core/StateManager.js';
 import { fnirsDevice }      from '../fnirs/FNIRSDevice.js';
 import { createLogger }     from '../core/Logger.js';
 
-const log = createLogger('SessionManager');
+const log         = createLogger('SessionManager');
+const STORAGE_KEY = 'cognirs:last_session';
 
 function generateSessionId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -22,14 +23,57 @@ function generateSessionId() {
     });
 }
 
+function persistSession(session) {
+    if (!session || typeof sessionStorage === 'undefined') return;
+    try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    } catch {
+        // Fall back to behavioral-only checkpoint if large fNIRS arrays exceed storage quota
+        try {
+            const lightweight = {
+                ...session,
+                fnirs: session.fnirs
+                    ? { ...session.fnirs, samples: [], truncatedOnReload: true }
+                    : null,
+            };
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(lightweight));
+        } catch { /* ignore storage restrictions */ }
+    }
+}
+
+function loadPersistedSession() {
+    if (typeof sessionStorage === 'undefined') return null;
+    try {
+        const raw = sessionStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.tests)) return null;
+        if (!parsed.endTime) {
+            parsed.endTime         = new Date().toISOString();
+            parsed.abortedOnReload = true;
+        }
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
 class SessionManager {
     constructor() {
-        this._session       = null;
+        this._session       = loadPersistedSession();
         this._testQueue     = [];
         this._currentTest   = null;
         this._container     = null;
         this._unsubTest     = null;
         this._nextTestTimer = null;
+
+        if (this._session) {
+            stateManager.setState({
+                participant: this._session.participant ?? null,
+                session:     this._session,
+            });
+            log.info('Restored previous session from storage', this._session.id);
+        }
     }
 
     /**
@@ -59,6 +103,7 @@ class SessionManager {
         this._testQueue = [...tests];
         this._container = container;
 
+        persistSession(this._session);
         stateManager.setState({ participant, session: this._session, currentTest: null });
         fnirsDevice.startRecording();
         eventBus.emit(EVENTS.SESSION_STARTED, this._session);
@@ -100,6 +145,7 @@ class SessionManager {
 
         this._testQueue = [];
         this._session   = null;
+        try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
         stateManager.setState({ session: null, currentTest: null });
     }
 
@@ -126,6 +172,7 @@ class SessionManager {
                 results: results ?? [],
             });
 
+            persistSession(this._session);
             stateManager.setState({ session: { ...this._session }, currentTest: null });
             log.info(`Test "${testId}" complete — ${results?.length ?? 0} trials`);
 
@@ -148,6 +195,7 @@ class SessionManager {
         this._session.fnirs   = recording;
         this._session.endTime = new Date().toISOString();
 
+        persistSession(this._session);
         stateManager.setState({ session: { ...this._session }, currentTest: null });
         eventBus.emit(EVENTS.SESSION_ENDED, this._session);
         log.info('Session ended', this._session.id);
