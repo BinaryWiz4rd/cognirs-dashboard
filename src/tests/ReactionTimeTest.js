@@ -3,8 +3,9 @@
  * key-repeat protection, and anticipatory false-start logging.
  */
 
-import { BaseTest }     from './BaseTest.js';
-import { SeededRandom } from '../utils/Random.js';
+import { BaseTest }         from './BaseTest.js';
+import { SeededRandom }     from '../utils/Random.js';
+import { eventBus, EVENTS } from '../core/EventBus.js';
 
 const DEFAULT_CONFIG = {
     variant:   'simple',
@@ -17,12 +18,16 @@ const DEFAULT_CONFIG = {
 
 export class ReactionTimeTest extends BaseTest {
     constructor(config = {}) {
-        super('reaction-time', 'Reaction Time Test', { ...DEFAULT_CONFIG, ...config });
+        const cfg = { ...DEFAULT_CONFIG, ...config };
+        super(
+            'reaction-time',
+            `Reaction Time (${cfg.variant === 'choice' ? 'Choice' : 'Simple'})`,
+            cfg
+        );
         this._rng           = new SeededRandom(this.config.seed);
         this._itiTimer      = null;
         this._stimTimer     = null;
         this._feedbackTimer = null;
-        this._keyFn         = null;
         this._phase         = 'idle';
         this._falseStarts   = 0;
         this._itiStartedAt  = 0;
@@ -32,7 +37,6 @@ export class ReactionTimeTest extends BaseTest {
     unmount() {
         this._phase = 'idle';
         this._clearTimers();
-        this._detachKey();
         super.unmount();
     }
 
@@ -177,18 +181,20 @@ export class ReactionTimeTest extends BaseTest {
             const pressedKey   = this._keyToSide(e);
 
             this._startTrial({ ...this._currentTrial, falseStart: true });
-            this._endTrial({
-                key:             pressedKey,
-                correct:         false,
-                timedOut:        false,
-                falseStart:      true,
-                falseStartCount: this._falseStarts,
+            const falseStartRecord = {
+                key:              pressedKey,
+                correct:          false,
+                timedOut:         false,
+                falseStart:       true,
+                falseStartCount:  this._falseStarts,
                 itiElapsedMs,
-                side:            this._currentTrial.side,
-                reactionTime:    null,
-            });
-            // BaseTest._endTrial increments _trialIndex; undo so false starts don't consume stimulus trials
-            this._trialIndex--;
+                side:             this._currentTrial.side,
+                reactionTime:     null,
+                trialIndex:       null,
+                targetTrialIndex: this._trialIndex,
+            };
+            this._results.push(falseStartRecord);
+            eventBus.emit(EVENTS.TEST_TRIAL_END, { testId: this.id, result: falseStartRecord });
 
             this._phase = 'feedback';
             const circle = document.getElementById('rt-circle');
@@ -273,19 +279,6 @@ export class ReactionTimeTest extends BaseTest {
         if (e.code === 'ArrowLeft')  return 'left';
         if (e.code === 'ArrowRight') return 'right';
         return null;
-    }
-
-    _attachKey(fn) {
-        this._detachKey();
-        this._keyFn = fn;
-        document.addEventListener('keydown', this._keyFn);
-    }
-
-    _detachKey() {
-        if (this._keyFn) {
-            document.removeEventListener('keydown', this._keyFn);
-            this._keyFn = null;
-        }
     }
 
     _clearTimers() {

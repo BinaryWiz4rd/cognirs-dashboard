@@ -26,7 +26,7 @@ export const SessionExporter = {
 
         session.tests.forEach((testEntry) => {
             const { testId, name, results } = testEntry;
-            results.forEach((r, i) => {
+            results.forEach((r) => {
                 const nLevel  = _resolveNLevel(testEntry, r);
                 const variant = _resolveVariant(testEntry, r, nLevel);
                 const responseVal = Array.isArray(r.response)
@@ -43,7 +43,7 @@ export const SessionExporter = {
                     name,
                     variant,
                     nLevel,
-                    i,
+                    r.trialIndex !== undefined && r.trialIndex !== null ? r.trialIndex : '',
                     _bool(r.correct),
                     r.reactionTime != null ? +r.reactionTime.toFixed(2) : -1,
                     _bool(r.timedOut),
