@@ -22,6 +22,7 @@ export class BaseTest {
         this._demoTimers          = [];
         this._countdownTimer      = null;
         this._countdownAnimTimer  = null;
+        this._keyFn               = null;
         this._unmounted           = false;
     }
 
@@ -37,6 +38,7 @@ export class BaseTest {
 
     unmount() {
         this._unmounted = true;
+        this._detachKey();
         this._stopDemoLoop();
         this._clearCountdown();
         if (this._container) this._container.innerHTML = '';
@@ -47,6 +49,19 @@ export class BaseTest {
     setup()               { throw new Error(`${this.id}.setup() not implemented`); }
     renderTrial()         {}
     processResponse()     {}
+
+    _attachKey(fn) {
+        this._detachKey();
+        this._keyFn = fn;
+        document.addEventListener('keydown', this._keyFn);
+    }
+
+    _detachKey() {
+        if (this._keyFn) {
+            document.removeEventListener('keydown', this._keyFn);
+            this._keyFn = null;
+        }
+    }
 
     _goToDemo() {
         this._stopDemoLoop();
@@ -104,7 +119,7 @@ export class BaseTest {
             padding: 14px 18px;
             margin-bottom: ${keysHtml ? '20px' : '0'};
           ">
-            ${bullets.map(b => `
+            ${bullets.map((b, idx) => `
               <div style="
                 display: flex;
                 align-items: flex-start;
@@ -113,7 +128,7 @@ export class BaseTest {
                 font-size: 0.875rem;
                 color: var(--color-text-secondary, #4a6080);
                 line-height: 1.55;
-                border-bottom: 1px solid var(--color-border, #ccdaf5);
+                border-bottom: ${idx < bullets.length - 1 ? '1px solid var(--color-border, #ccdaf5)' : 'none'};
               ">
                 <span style="
                   width: 6px;
@@ -236,7 +251,6 @@ export class BaseTest {
         document.getElementById('demo-begin-btn')
             .addEventListener('click', () => this._goToTest());
     }
-
 
     _demoTimeout(fn, ms) {
         const id = setTimeout(fn, ms);
