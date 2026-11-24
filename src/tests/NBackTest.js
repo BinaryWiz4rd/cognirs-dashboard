@@ -12,12 +12,12 @@ const LETTERS = ['B','C','D','F','G','H','J','K','L','M',
     'N','P','Q','R','S','T','V','W','Y'];
 
 const DEFAULT_CONFIG = {
-    n:             2,
-    trials:        30,
-    targetRatio:   0.33,
-    stimDurationMs:1500,
-    isiMs:         500,
-    seed:          17,
+    n:              2,
+    trials:         30,
+    targetRatio:    0.33,
+    stimDurationMs: 1500,
+    isiMs:          500,
+    seed:           17,
 };
 
 export class NBackTest extends BaseTest {
@@ -29,14 +29,12 @@ export class NBackTest extends BaseTest {
         this._responded = false;
         this._stimTimer = null;
         this._isiTimer  = null;
-        this._keyFn     = null;
         this._phase     = 'idle';
     }
 
     unmount() {
         this._phase = 'idle';
         this._clearTimers();
-        this._detachKey();
         super.unmount();
     }
 
@@ -264,20 +262,6 @@ export class NBackTest extends BaseTest {
         </div>
       </div>
     `;
-    }
-
-
-    _attachKey(fn) {
-        this._detachKey();
-        this._keyFn = fn;
-        document.addEventListener('keydown', this._keyFn);
-    }
-
-    _detachKey() {
-        if (this._keyFn) {
-            document.removeEventListener('keydown', this._keyFn);
-            this._keyFn = null;
-        }
     }
 
     _clearTimers() {

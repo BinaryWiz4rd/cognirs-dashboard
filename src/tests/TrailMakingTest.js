@@ -1,6 +1,6 @@
 /**
- *
- * Error feedback: brief red flash on the wrong node.
+ * Trail Making Test (Part A & Part B).
+ * Measures processing speed, visual scanning, and task-switching flexibility.
  */
 
 import { BaseTest }     from './BaseTest.js';
@@ -14,15 +14,24 @@ const DEFAULT_CONFIG = {
 
 export class TrailMakingTest extends BaseTest {
     constructor(config = {}) {
-        super('trail-making', 'Trail Making Test', { ...DEFAULT_CONFIG, ...config });
-        this._rng          = new SeededRandom(this.config.seed);
+        const cfg = { ...DEFAULT_CONFIG, ...config };
+        super('trail-making', `Trail Making Test — Part ${cfg.variant}`, cfg);
+        this._rng          = new SeededRandom(cfg.seed);
         this._items        = [];
         this._nextExpected = 0;
         this._errors       = 0;
         this._startTime    = null;
         this._points       = [];
+        this._errorTimers  = new Set();
     }
 
+    unmount() {
+        this._errorTimers.forEach(id => clearTimeout(id));
+        this._errorTimers.clear();
+        this._startTime    = null;
+        this._nextExpected = 0;
+        super.unmount();
+    }
 
     _renderInstructions() {
         const isB    = this.config.variant === 'B';
@@ -182,19 +191,23 @@ export class TrailMakingTest extends BaseTest {
     }
 
     _handleClick(item) {
+        if (this._unmounted) return;
+
         if (item.order === this._nextExpected) {
             const node = document.getElementById(`tmt-node-${item.id}`);
-            node.classList.add('tmt-node--done');
-            node.disabled = true;
+            if (node) {
+                node.classList.add('tmt-node--done');
+                node.disabled = true;
+            }
 
             this._points.push(`${item.x + 1.5},${item.y + 1.5}`);
             document.getElementById('tmt-polyline')?.setAttribute('points', this._points.join(' '));
 
-            const pct  = (this._nextExpected / (this._items.length - 1)) * 100;
+            this._nextExpected++;
+
+            const pct  = Math.min(100, (this._nextExpected / Math.max(1, this._items.length)) * 100);
             const fill = this._container.querySelector('.progress-bar__fill');
             if (fill) fill.style.width = `${pct}%`;
-
-            this._nextExpected++;
 
             if (this._nextExpected >= this._items.length) {
                 this._finish();
@@ -202,8 +215,16 @@ export class TrailMakingTest extends BaseTest {
         } else {
             this._errors++;
             const node = document.getElementById(`tmt-node-${item.id}`);
-            node.classList.add('tmt-node--wrong', 'anim-shake');
-            setTimeout(() => node.classList.remove('tmt-node--wrong', 'anim-shake'), 400);
+            if (node) {
+                node.classList.add('tmt-node--wrong', 'anim-shake');
+                const timerId = setTimeout(() => {
+                    this._errorTimers.delete(timerId);
+                    if (!this._unmounted) {
+                        node.classList.remove('tmt-node--wrong', 'anim-shake');
+                    }
+                }, 400);
+                this._errorTimers.add(timerId);
+            }
         }
     }
 
@@ -213,6 +234,6 @@ export class TrailMakingTest extends BaseTest {
         this._done();
     }
 
-    renderTrial()    {}
+    renderTrial()     {}
     processResponse() {}
 }

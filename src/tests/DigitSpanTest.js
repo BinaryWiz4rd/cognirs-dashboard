@@ -31,7 +31,6 @@ export class DigitSpanTest extends BaseTest {
         this._consecutive   = 0;
         this._sequence      = [];
         this._response      = [];
-        this._keyFn         = null;
         this._digitTimer    = null;
         this._isiTimer      = null;
         this._feedbackTimer = null;
@@ -42,7 +41,6 @@ export class DigitSpanTest extends BaseTest {
     unmount() {
         this._phase = 'idle';
         this._clearTimers();
-        this._detachKey();
         super.unmount();
     }
 
@@ -73,7 +71,7 @@ export class DigitSpanTest extends BaseTest {
             ],
             keysHtml: `
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <kbd style="font-family:monospace;font-size:0.82rem;font-weight:600;padding:5px 10px;background:#fff;border:1.5px solid #a8c4ee;border-radius:5px;box-shadow:0 1px 0 #a8c4ee;">0–9</kbd>
+          <kbd style="font-family:monospace;font-size:0.82rem;font-weight:600;padding:5px 10px;background:#fff;border:1.5px solid #a8c4ee;border-radius:5px;box-shadow:0 1px 0 #a8c4ee;">1–9</kbd>
           <span style="font-size:0.82rem;color:#8aa4c0;">type digits</span>
           <kbd style="font-family:monospace;font-size:0.82rem;font-weight:600;padding:5px 10px;background:#fff;border:1.5px solid #a8c4ee;border-radius:5px;box-shadow:0 1px 0 #a8c4ee;margin-left:8px;">Enter</kbd>
           <span style="font-size:0.82rem;color:#8aa4c0;">confirm answer</span>
@@ -292,7 +290,7 @@ export class DigitSpanTest extends BaseTest {
         return (e) => {
             if (this._phase !== 'response' || e.repeat) return;
 
-            if (e.key >= '0' && e.key <= '9') {
+            if (e.key >= '1' && e.key <= '9') {
                 e.preventDefault();
                 if (this._response.length < this._sequence.length) {
                     this._response.push(parseInt(e.key, 10));
@@ -361,18 +359,5 @@ export class DigitSpanTest extends BaseTest {
         });
 
         this._feedbackTimer = setTimeout(() => this._nextTrial(), 700);
-    }
-
-    _attachKey(fn) {
-        this._detachKey();
-        this._keyFn = fn;
-        document.addEventListener('keydown', this._keyFn);
-    }
-
-    _detachKey() {
-        if (this._keyFn) {
-            document.removeEventListener('keydown', this._keyFn);
-            this._keyFn = null;
-        }
     }
 }

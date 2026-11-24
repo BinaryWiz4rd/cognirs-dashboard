@@ -23,7 +23,7 @@ const DEFAULT_CONFIG = {
     trials:     60,
     goRatio:    0.80,
     stimMs:     500,    // stimulus display time
-    responseMs:  1000,    // response window after circle disappears
+    responseMs: 1000,   // response window after circle disappears
     minIsiMs:   800,
     maxIsiMs:   1400,
     seed:       31,
@@ -35,7 +35,6 @@ export class GoNoGoTest extends BaseTest {
         super('go-no-go', 'Go / No-Go Task', cfg);
         this._rng           = new SeededRandom(cfg.seed);
         this._sequence      = [];
-        this._keyFn         = null;
         this._stimTimer     = null;
         this._respTimer     = null;
         this._isiTimer      = null;
@@ -47,7 +46,6 @@ export class GoNoGoTest extends BaseTest {
     unmount() {
         this._phase = 'idle';
         this._clearTimers();
-        this._detachKey();
         super.unmount();
     }
 
@@ -306,19 +304,6 @@ export class GoNoGoTest extends BaseTest {
         </div>
       </div>
     `;
-    }
-
-    _attachKey(fn) {
-        this._detachKey();
-        this._keyFn = fn;
-        document.addEventListener('keydown', this._keyFn);
-    }
-
-    _detachKey() {
-        if (this._keyFn) {
-            document.removeEventListener('keydown', this._keyFn);
-            this._keyFn = null;
-        }
     }
 
     _clearTimers() {

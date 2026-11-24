@@ -1,5 +1,6 @@
 /**
- *
+ * Stroop Color–Word Test.
+ * Measures selective attention and cognitive inhibition via ink and word interference.
  */
 
 import { BaseTest }     from './BaseTest.js';
@@ -28,6 +29,7 @@ export class StroopTest extends BaseTest {
         this._trials       = [];
         this._trialTimeout = null;
         this._itiTimeout   = null;
+        this._responded    = false;
     }
 
     unmount() {
@@ -35,6 +37,7 @@ export class StroopTest extends BaseTest {
         clearTimeout(this._itiTimeout);
         this._trialTimeout = null;
         this._itiTimeout   = null;
+        this._responded    = false;
         super.unmount();
     }
 
@@ -152,6 +155,7 @@ export class StroopTest extends BaseTest {
     }
 
     renderTrial(trial) {
+        this._responded = false;
         const pct = (this._trialIndex / this._trials.length) * 100;
 
         this._container.innerHTML = `
@@ -180,8 +184,6 @@ export class StroopTest extends BaseTest {
 
         this._container.querySelectorAll('.stroop-choice-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                clearTimeout(this._trialTimeout);
-                this._trialTimeout = null;
                 this.processResponse({ response: btn.dataset.color, trial });
             });
         });
@@ -194,7 +196,12 @@ export class StroopTest extends BaseTest {
     }
 
     processResponse({ response, trial, timedOut = false }) {
-        if (this._unmounted) return;
+        if (this._unmounted || this._responded) return;
+        this._responded = true;
+
+        clearTimeout(this._trialTimeout);
+        this._trialTimeout = null;
+
         const correct = !timedOut && response === trial.inkColor.name;
         this._endTrial({ response, correct, timedOut, congruent: trial.congruent });
 
