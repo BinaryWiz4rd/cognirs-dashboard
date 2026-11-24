@@ -30,6 +30,10 @@ export class FNIRSAdapter {
     get isSimulated() { return this._isSimulated; }
 
     async connect({ baudRate = 115200, simulate = false, onData, onError, onClose } = {}) {
+        if (this._isConnected || this._simTimer || this._port) {
+            await this.disconnect();
+        }
+
         this._onData  = onData;
         this._onError = onError;
         this._onClose = onClose;
@@ -40,8 +44,9 @@ export class FNIRSAdapter {
         }
 
         if (!('serial' in navigator)) {
-            log.warn('WebSerial API not supported in this browser — starting 50 Hz simulator');
-            return this._startSimulation();
+            const err = new Error('WebSerial API is not supported in this browser.');
+            log.error(err.message);
+            throw err;
         }
 
         try {
@@ -55,9 +60,11 @@ export class FNIRSAdapter {
             log.info(`Connected to fNIRS device via WebSerial (baudRate=${baudRate})`);
             return { success: true, simulated: false };
         } catch (err) {
-            log.warn('WebSerial connection unavailable or cancelled — falling back to 50 Hz simulator', err);
-            this._port = null;
-            return this._startSimulation();
+            this._port        = null;
+            this._isConnected = false;
+            this._isSimulated = false;
+            log.error('WebSerial connection failed or was cancelled', err);
+            throw err;
         }
     }
 
