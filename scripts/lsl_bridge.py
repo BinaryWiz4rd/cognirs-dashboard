@@ -23,6 +23,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("LSLBridge")
 
+_last_drop_warning_mono = 0.0
+
 
 def parse_channel_layout(info: Any) -> list[tuple[int, int, str]]:
     """
@@ -75,6 +77,7 @@ def build_sample_frames(
     layout: list[tuple[int, int, str]],
 ) -> list[dict[str, Any]]:
     """Converts a raw LSL float vector into normalized COGNIRS channel objects."""
+    global _last_drop_warning_mono
     grouped: dict[int, dict[str, Any]] = {}
 
     for raw_idx, logical_ch, chromophore in layout:
@@ -94,11 +97,25 @@ def build_sample_frames(
         )
         entry[chromophore] = val
 
-    return [
-        frame
-        for _, frame in sorted(grouped.items())
-        if frame["hbo"] is not None and frame["hbr"] is not None
-    ]
+    complete: list[dict[str, Any]] = []
+    dropped_channels: list[int] = []
+
+    for ch_idx, frame in sorted(grouped.items()):
+        if frame["hbo"] is not None and frame["hbr"] is not None:
+            complete.append(frame)
+        else:
+            dropped_channels.append(ch_idx)
+
+    if dropped_channels:
+        now = time.monotonic()
+        if now - _last_drop_warning_mono >= 5.0:
+            _last_drop_warning_mono = now
+            log.warning(
+                "Dropped incomplete or non-finite HbO/HbR pairs on logical channels: %s",
+                dropped_channels,
+            )
+
+    return complete
 
 
 class LSLWebSocketBridge:
