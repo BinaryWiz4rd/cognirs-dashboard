@@ -2,7 +2,7 @@
  * Working memory paradigm in fNIRS + ADHD research.
  * (Monden et al. 2012, Gu et al. 2022, Yanagisawa et al. 2010)
  *
- * Feedback: silent border color change on the card (green/red, 300 ms).
+ * Response window spans the full SOA (stimDurationMs + isiMs).
  */
 
 import { BaseTest }     from './BaseTest.js';
@@ -50,7 +50,7 @@ export class NBackTest extends BaseTest {
             title:    `${n}-Back Task`,
             subtitle: rule,
             bullets: [
-                `A single letter appears on screen for ${this.config.stimDurationMs / 1000} s, then a brief blank`,
+                `A single letter appears on screen for ${this.config.stimDurationMs / 1000} s, followed by a brief blank interval`,
                 'Press Space if it matches — do nothing if it does not',
                 'Accuracy matters more than speed; do not guess',
                 `${this.config.trials} letters total`,
@@ -175,9 +175,9 @@ export class NBackTest extends BaseTest {
             return;
         }
 
-        const stimulus   = this._sequence[this._trialIndex];
-        this._responded  = false;
-        this._phase      = 'stim';
+        const stimulus  = this._sequence[this._trialIndex];
+        this._responded = false;
+        this._phase     = 'stim';
 
         this._renderStimulusScreen(stimulus);
 
@@ -186,41 +186,55 @@ export class NBackTest extends BaseTest {
             this._attachKey(this._makeResponseHandler(stimulus));
         }
 
-        this._stimTimer = setTimeout(() => this._onStimulusEnd(stimulus), this.config.stimDurationMs);
+        this._stimTimer = setTimeout(() => this._onStimulusHide(), this.config.stimDurationMs);
+
+        this._isiTimer  = setTimeout(
+            () => this._onTrialComplete(stimulus),
+            this.config.stimDurationMs + this.config.isiMs
+        );
     }
 
-    _onStimulusEnd(stimulus) {
+    _onStimulusHide() {
         if (this._unmounted || this._phase !== 'stim') return;
         this._phase = 'isi';
-        this._detachKey();
-
-        if (!stimulus.isPrime) {
-            if (stimulus.isTarget && !this._responded) {
-                this._endTrial({ correct: false, hit: false, miss: true, falseAlarm: false, isTarget: true });
-            } else if (!stimulus.isTarget && !this._responded) {
-                this._endTrial({ correct: true,  hit: false, miss: false, falseAlarm: false, isTarget: false });
-            }
-        }
 
         const card = document.getElementById('nback-card');
         if (card) {
-            card.classList.remove('nback-card--show', 'nback-card--hit', 'nback-card--miss');
+            card.classList.remove('nback-card--show');
+            if (!this._responded) {
+                card.classList.remove('nback-card--hit', 'nback-card--miss');
+            }
             const letter = card.querySelector('.nback-letter');
             if (letter) letter.textContent = '';
         }
+    }
 
-        this._isiTimer = setTimeout(() => {
-            if (this._unmounted) return;
+    _onTrialComplete(stimulus) {
+        if (this._unmounted || (this._phase !== 'stim' && this._phase !== 'isi')) return;
+        this._detachKey();
+
+        if (!stimulus.isPrime) {
+            if (!this._responded) {
+                this._endTrial({
+                    correct:    !stimulus.isTarget,
+                    hit:        false,
+                    miss:       stimulus.isTarget,
+                    falseAlarm: false,
+                    isTarget:   stimulus.isTarget,
+                });
+            }
+        } else {
             this._trialIndex++;
-            this._nextStimulus();
-        }, this.config.isiMs);
+        }
+
+        this._nextStimulus();
     }
 
     _makeResponseHandler(stimulus) {
         return (e) => {
             if (e.code !== 'Space') return;
             e.preventDefault();
-            if (this._phase !== 'stim' || this._responded) return;
+            if ((this._phase !== 'stim' && this._phase !== 'isi') || this._responded) return;
 
             this._responded = true;
             this._detachKey();
