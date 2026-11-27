@@ -28,7 +28,6 @@ function persistSession(session) {
     try {
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     } catch {
-        // Fall back to behavioral-only checkpoint if large fNIRS arrays exceed storage quota
         try {
             const lightweight = {
                 ...session,
@@ -60,12 +59,13 @@ function loadPersistedSession() {
 
 class SessionManager {
     constructor() {
-        this._session       = loadPersistedSession();
-        this._testQueue     = [];
-        this._currentTest   = null;
-        this._container     = null;
-        this._unsubTest     = null;
-        this._nextTestTimer = null;
+        this._session            = loadPersistedSession();
+        this._testQueue          = [];
+        this._currentTest        = null;
+        this._container          = null;
+        this._unsubTest          = null;
+        this._nextTestTimer      = null;
+        this._beforeUnloadHandler = null;
 
         if (this._session) {
             stateManager.setState({
@@ -74,6 +74,13 @@ class SessionManager {
             });
             log.info('Restored previous session from storage', this._session.id);
         }
+
+        eventBus.on(EVENTS.NAVIGATE, (page) => {
+            if (page !== 'test' && this.isActive()) {
+                log.warn(`Navigated to "${page}" during active session — aborting running session`);
+                this.abort();
+            }
+        });
     }
 
     /**
@@ -103,6 +110,7 @@ class SessionManager {
         this._testQueue = [...tests];
         this._container = container;
 
+        this._attachBeforeUnloadGuard();
         persistSession(this._session);
         stateManager.setState({ participant, session: this._session, currentTest: null });
         fnirsDevice.startRecording();
@@ -120,6 +128,7 @@ class SessionManager {
         if (!this.isActive()) return;
 
         log.warn('Aborting active session', this._session.id);
+        this._detachBeforeUnloadGuard();
         clearTimeout(this._nextTestTimer);
         this._nextTestTimer = null;
 
@@ -147,6 +156,24 @@ class SessionManager {
         this._session   = null;
         try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
         stateManager.setState({ session: null, currentTest: null });
+    }
+
+    _attachBeforeUnloadGuard() {
+        this._detachBeforeUnloadGuard();
+        if (typeof window === 'undefined') return;
+        this._beforeUnloadHandler = (e) => {
+            if (!this.isActive()) return;
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', this._beforeUnloadHandler);
+    }
+
+    _detachBeforeUnloadGuard() {
+        if (this._beforeUnloadHandler && typeof window !== 'undefined') {
+            window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+        }
+        this._beforeUnloadHandler = null;
     }
 
     _runNextTest() {
@@ -187,6 +214,7 @@ class SessionManager {
     }
 
     _end() {
+        this._detachBeforeUnloadGuard();
         clearTimeout(this._nextTestTimer);
         this._nextTestTimer = null;
         if (this._unsubTest) { this._unsubTest(); this._unsubTest = null; }
