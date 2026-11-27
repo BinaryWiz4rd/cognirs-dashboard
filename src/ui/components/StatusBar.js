@@ -147,8 +147,16 @@ export function renderStatusBar(mountEl) {
 
     render(true);
 
+    const onStateChange = () => render(false);
+    const unsubState    = stateManager.subscribe(onStateChange);
+
     const unsubs = [
-        stateManager.subscribe(() => render(false)),
+        () => {
+            if (typeof unsubState === 'function') unsubState();
+            if (typeof stateManager.unsubscribe === 'function') {
+                stateManager.unsubscribe(onStateChange);
+            }
+        },
         eventBus.on(EVENTS.FNIRS_RECORDING_START, () => {
             sampleCount = 0;
             const displayElement = mountEl.querySelector('.data-counter__value');
