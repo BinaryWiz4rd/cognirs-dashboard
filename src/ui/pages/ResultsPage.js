@@ -86,24 +86,28 @@ const METRIC_BUILDERS = {
     },
 
     'digit-span': (results) => {
-        const correct = results.filter(r => r.correct);
-        const spans   = results.map(r => r.span);
-        const maxSpan = Math.max(...spans, 0);
+        const correct     = results.filter(r => r.correct);
+        const passedSpans = correct.map(r => r.span).filter(s => typeof s === 'number');
+        const maxSpan     = passedSpans.length ? Math.max(...passedSpans) : 0;
+        const meanSpan    = passedSpans.length ? DataUtils.mean(passedSpans).toFixed(1) : '—';
         return [
-            { label: 'Max span reached', value: maxSpan },
-            { label: 'Trials correct',   value: `${correct.length} / ${results.length}` },
-            { label: 'Mean span',        value: DataUtils.mean(spans).toFixed(1) },
+            { label: 'Max span passed',     value: maxSpan },
+            { label: 'Trials correct',      value: `${correct.length} / ${results.length}` },
+            { label: 'Mean passed span',    value: meanSpan },
         ];
     },
 
     'reaction-time': (results) => {
-        const hits = results.filter(r => r.correct && !r.timedOut);
+        const falseStarts    = results.filter(r => r.falseStart);
+        const stimulusTrials = results.filter(r => !r.falseStart);
+        const hits           = stimulusTrials.filter(r => r.correct && !r.timedOut);
         return [
-            { label: 'Accuracy',            value: pct(results, r => r.correct) },
+            { label: 'Accuracy',            value: pct(stimulusTrials, r => r.correct) },
             { label: 'Mean RT',             value: DataUtils.formatMs(meanRT(hits)) },
             { label: 'Median RT',           value: DataUtils.formatMs(DataUtils.median(hits.map(r => r.reactionTime))) },
             { label: 'RT variability (SD)', value: DataUtils.formatMs(DataUtils.std(hits.map(r => r.reactionTime))) },
-            { label: 'Timeouts',            value: results.filter(r => r.timedOut).length },
+            { label: 'False starts',        value: falseStarts.length, note: 'Anticipatory ITI presses' },
+            { label: 'Timeouts',            value: stimulusTrials.filter(r => r.timedOut).length },
         ];
     },
 
@@ -143,9 +147,9 @@ export function renderResultsPage(mountEl) {
 
     const { participant, fnirs, tests } = session;
 
-    const allResults = tests.flatMap(t => t.results);
-    const overallAcc = allResults.filter(r => r.correct !== undefined).length
-        ? Math.round(allResults.filter(r => r.correct).length / allResults.filter(r => r.correct !== undefined).length * 100)
+    const scoredResults = tests.flatMap(t => t.results).filter(r => r.correct !== undefined && !r.falseStart);
+    const overallAcc = scoredResults.length
+        ? Math.round(scoredResults.filter(r => r.correct).length / scoredResults.length * 100)
         : '—';
 
     mountEl.innerHTML = `
@@ -186,16 +190,17 @@ export function renderResultsPage(mountEl) {
       </div>
 
       ${tests.map(({ testId, name, results }, i) => {
-        const label   = name || TEST_LABELS[testId] || testId;
-        const builder = METRIC_BUILDERS[testId];
-        const metrics = builder ? builder(results) : [];
+        const label        = name || TEST_LABELS[testId] || testId;
+        const builder      = METRIC_BUILDERS[testId];
+        const metrics      = builder ? builder(results) : [];
+        const trialCount   = results.filter(r => !r.falseStart).length;
 
         return `
           <div class="card results-test-card anim-slide-up anim-d${Math.min(i + 1, 5)}" style="margin-bottom:var(--space-md);">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--space-lg);">
               <div>
                 <span class="results-test-label">${escapeHtml(label)}</span>
-                <span class="badge badge--neutral" style="margin-left:var(--space-sm);">${results.length} trials</span>
+                <span class="badge badge--neutral" style="margin-left:var(--space-sm);">${trialCount} trials</span>
               </div>
             </div>
             <div class="results-metrics-grid">
@@ -232,9 +237,9 @@ export function renderResultsPage(mountEl) {
     </div>
   `;
 
-    document.getElementById('exp-json') .addEventListener('click', () => SessionExporter.toJSON(session));
-    document.getElementById('exp-csv')  .addEventListener('click', () => SessionExporter.toCSV(session));
-    document.getElementById('exp-fnirs').addEventListener('click', () => SessionExporter.toFNIRSCSV(session));
+    mountEl.querySelector('#exp-json')?.addEventListener('click', () => SessionExporter.toJSON(session));
+    mountEl.querySelector('#exp-csv')?.addEventListener('click', () => SessionExporter.toCSV(session));
+    mountEl.querySelector('#exp-fnirs')?.addEventListener('click', () => SessionExporter.toFNIRSCSV(session));
 }
 
 function pct(arr, predicate) {
