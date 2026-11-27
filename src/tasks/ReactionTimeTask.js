@@ -3,7 +3,7 @@
  * key-repeat protection, and anticipatory false-start logging.
  */
 
-import { BaseTest }         from './BaseTest.js';
+import { BaseTask }         from './BaseTask.js';
 import { SeededRandom }     from '../utils/Random.js';
 import { eventBus, EVENTS } from '../core/EventBus.js';
 
@@ -16,7 +16,7 @@ const DEFAULT_CONFIG = {
     seed:      7,
 };
 
-export class ReactionTimeTest extends BaseTest {
+export class ReactionTimeTask extends BaseTask {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super(

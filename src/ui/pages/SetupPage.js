@@ -1,108 +1,15 @@
 /**
  * Session configuration page: participant metadata, fNIRS transport setup
  * (Cortivision LSL WebSocket bridge, 50 Hz offline simulator, or WebSerial),
- * and cognitive test selection.
+ * and cognitive task selection.
  */
 
-import { eventBus, EVENTS }          from '../../core/EventBus.js';
-import { sessionManager }            from '../../session/SessionManager.js';
-import { StroopTest }                from '../../tests/StroopTest.js';
-import { TrailMakingTest }           from '../../tests/TrailMakingTest.js';
-import { ReactionTimeTest }          from '../../tests/ReactionTimeTest.js';
-import { NBackTest }                 from '../../tests/NBackTest.js';
-import { GoNoGoTest }                from '../../tests/GoNoGoTest.js';
-import { ContinuousPerformanceTest } from '../../tests/ContinuousPerformanceTest.js';
-import { DigitSpanTest }             from '../../tests/DigitSpanTest.js';
-import { fnirsDevice }               from '../../fnirs/FNIRSDevice.js';
-import { stateManager }              from '../../core/StateManager.js';
-import { toast }                     from '../components/Toast.js';
-
-const TEST_REGISTRY = [
-    {
-        id:      'stroop',
-        label:   'Stroop Color–Word',
-        sub:     '24 trials · selective attention & inhibition',
-        group:   'Attention & Inhibition',
-        factory: () => new StroopTest(),
-    },
-    {
-        id:      'go-no-go',
-        label:   'Go / No-Go',
-        sub:     '60 trials · response inhibition',
-        group:   'Attention & Inhibition',
-        factory: () => new GoNoGoTest(),
-    },
-    {
-        id:      'cpt',
-        label:   'Continuous Performance (CPT-AX)',
-        sub:     '100 trials · sustained attention & vigilance',
-        group:   'Attention & Inhibition',
-        factory: () => new ContinuousPerformanceTest(),
-    },
-    {
-        id:      'nback-0',
-        label:   '0-Back Task',
-        sub:     '30 trials · control working memory condition',
-        group:   'Working Memory',
-        factory: () => new NBackTest({ n: 0 }),
-    },
-    {
-        id:      'nback-1',
-        label:   '1-Back Task',
-        sub:     '30 trials · working memory (easy)',
-        group:   'Working Memory',
-        factory: () => new NBackTest({ n: 1 }),
-    },
-    {
-        id:      'nback-2',
-        label:   '2-Back Task',
-        sub:     '30 trials · working memory (standard)',
-        group:   'Working Memory',
-        factory: () => new NBackTest({ n: 2 }),
-    },
-    {
-        id:      'digit-fwd',
-        label:   'Digit Span — Forward',
-        sub:     'Adaptive · verbal WM forward recall',
-        group:   'Working Memory',
-        factory: () => new DigitSpanTest({ variant: 'forward' }),
-    },
-    {
-        id:      'digit-bwd',
-        label:   'Digit Span — Backward',
-        sub:     'Adaptive · verbal WM reverse recall',
-        group:   'Working Memory',
-        factory: () => new DigitSpanTest({ variant: 'backward' }),
-    },
-    {
-        id:      'tmt-a',
-        label:   'Trail Making — Part A',
-        sub:     '15 nodes · processing speed',
-        group:   'Executive Function',
-        factory: () => new TrailMakingTest({ variant: 'A' }),
-    },
-    {
-        id:      'tmt-b',
-        label:   'Trail Making — Part B',
-        sub:     '15 nodes · cognitive flexibility',
-        group:   'Executive Function',
-        factory: () => new TrailMakingTest({ variant: 'B' }),
-    },
-    {
-        id:      'rt-simple',
-        label:   'Reaction Time — Simple',
-        sub:     '20 trials · psychomotor speed',
-        group:   'Executive Function',
-        factory: () => new ReactionTimeTest({ variant: 'simple' }),
-    },
-    {
-        id:      'rt-choice',
-        label:   'Reaction Time — Choice',
-        sub:     '20 trials · response selection speed',
-        group:   'Executive Function',
-        factory: () => new ReactionTimeTest({ variant: 'choice' }),
-    },
-];
+import { eventBus, EVENTS }            from '../../core/EventBus.js';
+import { sessionManager }              from '../../session/SessionManager.js';
+import { SETUP_BATTERY, createTask }   from '../../tasks/taskRegistry.js';
+import { fnirsDevice }                 from '../../fnirs/FNIRSDevice.js';
+import { stateManager }                from '../../core/StateManager.js';
+import { toast }                       from '../components/Toast.js';
 
 const GROUPS = ['Attention & Inhibition', 'Working Memory', 'Executive Function'];
 
@@ -112,7 +19,7 @@ export function renderSetupPage(mountEl) {
     const initialUrl   = initialState.fnirsUrl ?? 'ws://127.0.0.1:5732';
 
     const groupedHtml = GROUPS.map(group => {
-        const tests = TEST_REGISTRY.filter(t => t.group === group);
+        const tests = SETUP_BATTERY.filter(t => t.group === group);
         return `
       <div class="setup-test-group">
         <p class="setup-group-label">${group}</p>
@@ -349,9 +256,9 @@ export function renderSetupPage(mountEl) {
         const selected = [...document.querySelectorAll('.test-checkbox:checked')].map(c => c.value);
         if (!selected.length) { toast('Select at least one test', 'error'); return; }
 
-        const tests = TEST_REGISTRY
+        const tests = SETUP_BATTERY
             .filter(t => selected.includes(t.id))
-            .map(t => t.factory());
+            .map(t => createTask(t.taskId, t.config));
 
         unsubState?.();
         eventBus.emit(EVENTS.NAVIGATE, 'test');

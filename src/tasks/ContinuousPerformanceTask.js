@@ -3,7 +3,7 @@
  * Target: press Space when 'X' appears immediately after 'A'.
  */
 
-import { BaseTest }     from './BaseTest.js';
+import { BaseTask }     from './BaseTask.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const LETTERS = ['B','C','D','F','G','H','K','L','M','N',
@@ -17,7 +17,7 @@ const DEFAULT_CONFIG = {
     seed:    53,
 };
 
-export class ContinuousPerformanceTest extends BaseTest {
+export class ContinuousPerformanceTask extends BaseTask {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('cpt', 'Continuous Performance Test', cfg);
@@ -228,7 +228,7 @@ export class ContinuousPerformanceTest extends BaseTest {
         this._detachKey();
 
         // Only record an unresponded outcome if the participant did not press Space.
-        // Note: BaseTest._endTrial() increments this._trialIndex automatically.
+        // Note: BaseTask._endTrial() increments this._trialIndex automatically.
         if (!this._responded) {
             this._endTrial({
                 correct:    !stimulus.isTarget,

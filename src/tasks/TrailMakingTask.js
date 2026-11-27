@@ -3,7 +3,7 @@
  * Measures processing speed, visual scanning, and task-switching flexibility.
  */
 
-import { BaseTest }     from './BaseTest.js';
+import { BaseTask }     from './BaseTask.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const DEFAULT_CONFIG = {
@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
     seed:    99,
 };
 
-export class TrailMakingTest extends BaseTest {
+export class TrailMakingTask extends BaseTask {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('trail-making', `Trail Making Test — Part ${cfg.variant}`, cfg);

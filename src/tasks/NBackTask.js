@@ -5,7 +5,7 @@
  * Response window spans the full SOA (stimDurationMs + isiMs).
  */
 
-import { BaseTest }     from './BaseTest.js';
+import { BaseTask }     from './BaseTask.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const LETTERS = ['B','C','D','F','G','H','J','K','L','M',
@@ -20,7 +20,7 @@ const DEFAULT_CONFIG = {
     seed:           17,
 };
 
-export class NBackTest extends BaseTest {
+export class NBackTask extends BaseTask {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('n-back', `${cfg.n}-Back Task`, cfg);

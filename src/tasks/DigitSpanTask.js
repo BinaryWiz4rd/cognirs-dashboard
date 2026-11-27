@@ -10,7 +10,7 @@
  * two consecutive correct trials, decreases by 1 after one error.
  */
 
-import { BaseTest }     from './BaseTest.js';
+import { BaseTask }     from './BaseTask.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const DEFAULT_CONFIG = {
@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
     seed:            61,
 };
 
-export class DigitSpanTest extends BaseTest {
+export class DigitSpanTask extends BaseTask {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('digit-span', `Digit Span (${cfg.variant})`, cfg);

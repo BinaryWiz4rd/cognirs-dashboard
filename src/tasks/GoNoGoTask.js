@@ -16,7 +16,7 @@
  * ISI is jittered (800–1400 ms) to prevent temporal prediction
  */
 
-import { BaseTest }     from './BaseTest.js';
+import { BaseTask }     from './BaseTask.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const DEFAULT_CONFIG = {
@@ -29,7 +29,7 @@ const DEFAULT_CONFIG = {
     seed:       31,
 };
 
-export class GoNoGoTest extends BaseTest {
+export class GoNoGoTask extends BaseTask {
     constructor(config = {}) {
         const cfg = { ...DEFAULT_CONFIG, ...config };
         super('go-no-go', 'Go / No-Go Task', cfg);

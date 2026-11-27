@@ -2,14 +2,14 @@
  * Three-phase architecture:
  *   1. INSTRUCTIONS  — card with title, subtitle, bullet list, key legend
  *   2. DEMO          — animated looping preview inside a stage box
- *   3. TEST          — countdown → live trials (zero text on screen)
+ *   3. TASK          — countdown → live trials (zero text on screen)
  */
 
 import { eventBus, EVENTS } from '../core/EventBus.js';
 import { Timer }            from '../utils/Timer.js';
 import { createLogger }     from '../core/Logger.js';
 
-export class BaseTest {
+export class BaseTask {
     constructor(id, name, config = {}) {
         this.id                   = id;
         this.name                 = name;

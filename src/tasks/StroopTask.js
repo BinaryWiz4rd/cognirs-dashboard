@@ -3,7 +3,7 @@
  * Measures selective attention and cognitive inhibition via ink and word interference.
  */
 
-import { BaseTest }     from './BaseTest.js';
+import { BaseTask }     from './BaseTask.js';
 import { SeededRandom } from '../utils/Random.js';
 
 const COLORS = [
@@ -22,7 +22,7 @@ const DEFAULT_CONFIG = {
     seed:           42,
 };
 
-export class StroopTest extends BaseTest {
+export class StroopTask extends BaseTask {
     constructor(config = {}) {
         super('stroop', 'Stroop Color–Word Test', { ...DEFAULT_CONFIG, ...config });
         this._rng          = new SeededRandom(this.config.seed);
