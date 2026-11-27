@@ -47,12 +47,12 @@ def parse_channel_layout(info: Any) -> list[tuple[int, int, str]]:
             ch_type = (ch_node.child_value("type") or "").lower()
             descriptor = f"{label} {ch_type}"
 
-            if "hbo" in descriptor or "oxy" in descriptor:
-                mappings.append((raw_idx, hbo_count, "hbo"))
-                hbo_count += 1
-            elif "hbr" in descriptor or "deoxy" in descriptor:
+            if "hbr" in descriptor or "deoxy" in descriptor:
                 mappings.append((raw_idx, hbr_count, "hbr"))
                 hbr_count += 1
+            elif "hbo" in descriptor or "oxy" in descriptor:
+                mappings.append((raw_idx, hbo_count, "hbo"))
+                hbo_count += 1
 
             raw_idx += 1
             ch_node = ch_node.next_sibling("channel")
