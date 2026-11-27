@@ -1,4 +1,4 @@
-# COGNIRS — Technical Documentation
+# COGNIRS - Technical Documentation
 
 Architecture, streaming bridge, browser acquisition adapters, clock synchronization, cognitive task parameters, metrics, and export schemas. For setup and running a session, see [README.md](../README.md).
 
@@ -8,7 +8,7 @@ Architecture, streaming bridge, browser acquisition adapters, clock synchronizat
 - [LSL-to-WebSocket bridge (`scripts/lsl_bridge.py`)](#2-lsl-to-websocket-bridge-scriptslsl_bridgepy)
 - [Browser fNIRS layer (`src/fnirs/`)](#3-browser-fnirs-layer-srcfnirs)
 - [Core architecture & session lifecycle](#4-core-architecture--session-lifecycle)
-- [Cognitive tasks (`src/tests/`)](#5-cognitive-tasks-srctests)
+- [Cognitive tasks (`src/tasks/`)](#5-cognitive-tasks-srctasks)
 - [Metrics & data exports](#6-metrics--data-exports)
 - [Verification & diagnostics](#7-verification--diagnostics)
 
@@ -48,7 +48,7 @@ flowchart LR
   FnirsAdp --> Device
   Device --> Recorder["FNIRSRecorder"]:::core
 
-  SessMgr["SessionManager"]:::core --> Tasks["BaseTest (7 tasks)"]:::core
+  SessMgr["SessionManager"]:::core --> Tasks["BaseTask (7 tasks)"]:::core
   Tasks -->|EventBus markers| Recorder
   SessMgr --> Exporter["SessionExporter"]:::export
   Recorder --> Exporter
@@ -56,6 +56,9 @@ flowchart LR
 
 ```text
 cognirs-dashboard/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                 # GitHub Actions CI (Vitest, Vite build, Pytest)
 ├── docs/
 │   └── TECHNICAL.md               # This file
 ├── scripts/
@@ -75,15 +78,16 @@ cognirs-dashboard/
 │   ├── session/
 │   │   ├── SessionManager.js      # Participant session & test queue runner
 │   │   └── SessionExporter.js     # JSON, behavioral CSV, and fNIRS CSV builder
-│   ├── tests/
-│   │   ├── BaseTest.js            # 3-phase lifecycle (instructions, demo, test)
-│   │   ├── ContinuousPerformanceTest.js
-│   │   ├── DigitSpanTest.js
-│   │   ├── GoNoGoTest.js
-│   │   ├── NBackTest.js
-│   │   ├── ReactionTimeTest.js
-│   │   ├── StroopTest.js
-│   │   └── TrailMakingTest.js
+│   ├── tasks/
+│   │   ├── BaseTask.js            # 3-phase lifecycle (instructions, demo, test)
+│   │   ├── ContinuousPerformanceTask.js
+│   │   ├── DigitSpanTask.js
+│   │   ├── GoNoGoTask.js
+│   │   ├── NBackTask.js
+│   │   ├── ReactionTimeTask.js
+│   │   ├── StroopTask.js
+│   │   ├── TrailMakingTask.js
+│   │   └── taskRegistry.js        # Centralized task metadata, factories, and metric builders
 │   ├── ui/
 │   │   ├── components/            # Header, StatusBar, Toast
 │   │   └── pages/                 # HomePage, SetupPage, ResultsPage
@@ -93,6 +97,11 @@ cognirs-dashboard/
 │   │   └── Timer.js               # performance.now() wrapper
 │   ├── main.js                    # Application bootstrap
 │   └── router.js                  # View router + active-session abort guard
+├── tests/
+│   ├── frontend/
+│   │   └── tasks.test.js          # Vitest + jsdom behavioral task unit tests
+│   └── bridge/
+│       └── test_lsl_bridge.py     # Pytest suite for LSL XML mapping & WS framing
 ├── index.html
 ├── package.json
 └── vite.config.js
@@ -107,12 +116,12 @@ Browsers cannot open Lab Streaming Layer (LSL) sockets directly because `liblsl`
 Requires **Python 3.10–3.12** (for prebuilt `pylsl` wheels).
 
 1. Create and activate a virtual environment:
-   - **Windows (PowerShell):**
+  - **Windows (PowerShell):**
      ```powershell
      py -3.12 -m venv .venv
      .\.venv\Scripts\Activate.ps1
      ```
-   - **Linux / macOS (Bash):**
+- **Linux / macOS (Bash):**
      ```bash
      python3 -m venv .venv
      source .venv/bin/activate
@@ -136,7 +145,7 @@ Requires **Python 3.10–3.12** (for prebuilt `pylsl` wheels).
 
 ### Channel layout & stream behavior
 
-- **Channel discovery:** `parse_channel_layout()` inspects the LSL XML descriptor (`info.desc().child("channels")`) and matches `hbo`/`oxy` and `hbr`/`deoxy` tokens in each channel's `label` and `type` fields to group them into logical channels `0..N-1`. If XML descriptors are absent, it falls back to interleaved pairs `[HbO_0, HbR_0, HbO_1, HbR_1, ...]`.
+- **Channel discovery:** `parse_channel_layout()` inspects the LSL XML descriptor (`info.desc().child("channels")`) and matches `hbr`/`deoxy` tokens before `hbo`/`oxy` tokens in each channel's `label` and `type` fields to group them into logical channels `0..N-1`. If XML descriptors are absent, it falls back to interleaved pairs `[HbO_0, HbR_0, HbO_1, HbR_1, ...]`.
 - **Polling & clock anchoring:** `inlet.pull_chunk(timeout=0.0)` is polled every 10 ms (100 Hz). LSL timestamps (`pylsl.local_clock()`) are anchored once at startup to Unix epoch milliseconds via `clock_offset_s = time.time() - local_clock()` to prevent OS wall-clock NTP step jumps mid-run.
 - **Validation:** Non-finite values (`NaN`, `Inf`) are filtered out in `build_sample_frames()` prior to broadcast.
 - **Reconnection:** If no LSL stream is found, the bridge retries every 2.0 s. If an active stream drops, it closes the inlet and retries after 1.0 s while keeping connected browser WebSocket clients open.
@@ -193,15 +202,15 @@ On a length or checksum mismatch, `FNIRSParser` discards 1 byte and scans forwar
   - Aborts any running session if `begin()` is called while one is already active.
   - Runs queued tests sequentially with a 1200 ms inter-test pause, starts `fnirsDevice` recording on session start, stops it on completion, and emits `SESSION_ENDED`.
 
-## 5. Cognitive tasks (`src/tests/`)
+## 5. Cognitive tasks (`src/tasks/`)
 
-All seven tasks extend `BaseTest.js` and execute across three lifecycle phases:
+All seven tasks extend `BaseTask.js` (and are registered in `taskRegistry.js`) and execute across three lifecycle phases:
 
-1. **Instructions** — task rules and key bindings.
-2. **Preview (`_renderDemo`)** — looping animated demonstration.
-3. **Test** — 3-second countdown (`Get ready`), followed by active trials with all instructional chrome removed.
+1. **Instructions** - task rules and key bindings.
+2. **Preview (`_renderDemo`)** - looping animated demonstration.
+3. **Test** - 3-second countdown (`Get ready`), followed by active trials with all instructional chrome removed.
 
-`BaseTest.unmount()` sets `_unmounted = true` and clears active demo/countdown timers so aborted tests cannot mutate detached DOM nodes or fire stale callbacks.
+`BaseTask.unmount()` sets `_unmounted = true` and clears active demo/countdown timers so aborted tests cannot mutate detached DOM nodes or fire stale callbacks.
 
 All stimulus generators use `SeededRandom` (`src/utils/Random.js`), which implements a Park-Miller LCG with fixed default seeds for reproducible trial sequences:
 
@@ -211,24 +220,24 @@ $$
 
 | `testId` | Class | Default Parameters | Seed | Input | Implementation Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `stroop` | `StroopTest` | 24 trials, 33% congruent, 3000 ms display, 500 ms ITI | `42` | Mouse click (5 buttons) | Colors: `RED`, `BLUE`, `GREEN`, `YELLOW`, `PURPLE` |
-| `go-no-go` | `GoNoGoTest` | 60 trials, 80% Go, 500 ms stim, 1000 ms response window, 800–1400 ms jittered ISI | `31` | `Space` (filled circle) | Withhold response on outline circle |
-| `cpt` | `ContinuousPerformanceTest` | 100 trials, 22% `A -> X` targets, capped at $\lfloor \text{trials}/2 \rfloor$, 500 ms stim, 1000 ms ISI | `53` | `Space` (`X` after `A`) | Generator swaps accidental standalone `A -> X` pairs |
-| `n-back` | `NBackTest` | 30 scored trials plus $n$ prime trials, 33% targets, 1500 ms stim, 500 ms ISI | `17` | `Space` (match $n$ back) | $n = 0$ matches `'X'`; includes fallback rules for $n \ge 3$ |
-| `digit-span` | `DigitSpanTest` | `forward` or `backward`, max 14 trials, start span 3, 800 ms digit, 400 ms ISI | `61` | `0-9`, `Backspace`, `Enter` | 2-up / 1-down adaptive staircase (span range `2–9`) |
-| `trail-making` | `TrailMakingTest` | Part `A` (`1..15`) or Part `B` (`1-A-2-B...`, 15 nodes) | `99` | Mouse click on nodes | Minimum Euclidean node spacing > 13% on 100×100 canvas |
-| `reaction-time` | `ReactionTimeTest` | `simple` or `choice`, 20 trials, 1000–2800 ms random ITI, 3000 ms max stim | `7` | `Space` / `ArrowLeft` `ArrowRight` | Ignores `e.repeat`; early ITI presses log `falseStart: true` and `reactionTime: null` without consuming a trial |
+| `stroop` | `StroopTask` | 24 trials, 33% congruent, 3000 ms display, 500 ms ITI | `42` | Mouse click (5 buttons) | Colors: `RED`, `BLUE`, `GREEN`, `YELLOW`, `PURPLE` |
+| `go-no-go` | `GoNoGoTask` | 60 trials, 80% Go, 500 ms stim, 1000 ms response window, 800-1400 ms jittered ISI | `31` | `Space` (filled circle) | Withhold response on outline circle |
+| `cpt` | `ContinuousPerformanceTask` | 100 trials, 22% `A -> X` targets, capped at $\lfloor \text{trials}/2 \rfloor$, 500 ms stim, 1000 ms ISI | `53` | `Space` (`X` after `A`) | Generator swaps accidental standalone `A -> X` pairs |
+| `n-back` | `NBackTask` | 30 scored trials plus $n$ prime trials, 33% targets, 1500 ms stim, 500 ms ISI | `17` | `Space` (match $n$ back) | $n = 0$ matches `'X'`; includes fallback rules for $n \ge 3$ |
+| `digit-span` | `DigitSpanTask` | `forward` or `backward`, max 14 trials, start span 3, 800 ms digit, 400 ms ISI | `61` | `0-9`, `Backspace`, `Enter` | 2-up / 1-down adaptive staircase (span range `2–9`) |
+| `trail-making` | `TrailMakingTask` | Part `A` (`1..15`) or Part `B` (`1-A-2-B...`, 15 nodes) | `99` | Mouse click on nodes | Minimum Euclidean node spacing > 13% on 100×100 canvas |
+| `reaction-time` | `ReactionTimeTask` | `simple` or `choice`, 20 trials, 1000–2800 ms random ITI, 3000 ms max stim | `7` | `Space` / `ArrowLeft` `ArrowRight` | Ignores `e.repeat`; early ITI presses log `falseStart: true` and `reactionTime: null` without consuming a trial |
 
 ## 6. Metrics & data exports
 
-### Summary metrics (`src/ui/pages/ResultsPage.js`)
+### Summary metrics (`src/tasks/taskRegistry.js` → `ResultsPage.js`)
 
 - **Stroop:** overall accuracy, congruent accuracy, incongruent accuracy, mean congruent/incongruent RT, interference effect — $\text{RT}(\text{incongruent}) - \text{RT}(\text{congruent})$.
 - **Go / No-Go:** Go accuracy, commission errors (No-Go presses), omission errors (missed Go), correct rejections, mean Go RT, Go RT SD.
 - **CPT-AX:** hit rate, false alarm rate, mean hit RT, accuracy across early / middle / late thirds (vigilance decrement).
 - **N-Back:** hit rate, false alarm rate, misses, sensitivity $d^{\prime} = z(\text{HR}) - z(\text{FAR})$ using the Abramowitz & Stegun rational inverse normal approximation, with rates clamped to $[0.01, 0.99]$, mean hit RT, hit RT SD.
 - **Digit Span:** max span reached, trials correct, mean span.
-- **Reaction Time:** accuracy, mean RT, median RT, RT SD, timeout count.
+- **Reaction Time:** accuracy, mean RT, median RT, RT SD, false starts, timeout count.
 - **Trail Making:** total completion time (s), sequence error count.
 
 ### Exported files (`src/session/SessionExporter.js`)
@@ -263,17 +272,9 @@ relativeTime_ms,deviceTimestamp_ms,channel,hbo,hbr
 
 ## 7. Verification & diagnostics
 
-- **Python LSL frame builder smoke test** (run from repo root):
+- **Automated unit test suites** (run via GitHub Actions on every push, or locally from repo root):
   ```bash
-  python -c "
-  from scripts.lsl_bridge import build_sample_frames
-  res = build_sample_frames(
-      [0.5, 0.3, float('nan'), 0.2],
-      12.345,
-      [(0, 0, 'hbo'), (1, 0, 'hbr'), (2, 1, 'hbo'), (3, 1, 'hbr')],
-  )
-  assert len(res) == 1 and res[0]['channel'] == 0
-  print('PASS:', res)
-  "
+  npm test     # Headless Vitest + jsdom behavioral task suite (7 tasks)
+  pytest -v    # LSL XML channel mapping, sample framing & WebSocket broadcast tests
   ```
 - **End-to-end offline pipeline check:** Start `npm run dev` (or `python scripts/lsl_bridge.py --simulate` for the WebSocket path), select **50 Hz Simulator (Offline)** or **Cortivision (WebSocket)** in **New session**, run a short task battery, and inspect the downloaded `.csv` and `.json` exports alongside Chromium DevTools Console logs (`Logger.js`).
