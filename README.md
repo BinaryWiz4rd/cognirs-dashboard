@@ -17,7 +17,7 @@
 
 ## Getting started
 
-You need **Node.js 18+** and a Chromium-based browser (Chrome, Edge, or Brave).
+You need **Node.js 22+** and a Chromium-based browser (Chrome, Edge, or Brave).
 
 1. Clone the repository and open the folder:
    ```bash
@@ -50,14 +50,14 @@ npm run preview
 1. Open **New session** from the top bar or home screen.
 2. Fill in the participant ID, age, and group (`Neurotypical control` or `ADHD`).
 3. Under **fNIRS device**, pick a source and click **Connect stream**:
-   - **Cortivision (WebSocket)** — connects to `ws://127.0.0.1:5732` when the headset stream is active.
-   - **50 Hz Simulator (Offline)** — generates synthetic 8-channel `HbO`/`HbR` data so you can run and test everything without hardware.
-   - **WebSerial COM Port** — connects directly to a serial fNIRS device over USB.
+  - **Cortivision (WebSocket)** - connects to `ws://127.0.0.1:5732` when the headset stream is active.
+  - **50 Hz Simulator (Offline)** - generates synthetic 8-channel `HbO`/`HbR` data so you can run and test everything without hardware.
+  - **WebSerial COM Port** - connects directly to a serial fNIRS device over USB.
 4. Check the tasks you want to include in the battery and click **Begin session**.
 5. When the battery finishes, the **Results** page shows per-task metrics and lets you download:
-   - Behavioral trial data (`.csv`)
-   - Timestamped `HbO`/`HbR` samples with task markers (`.csv`)
-   - Full session dump (`.json`)
+  - Behavioral trial data (`.csv`)
+  - Timestamped `HbO`/`HbR` samples with task markers (`.csv`)
+  - Full session dump (`.json`)
 
 ## Included tasks
 
@@ -65,9 +65,13 @@ npm run preview
 - **Working memory:** N-Back (`0-Back`, `1-Back`, `2-Back`), Digit Span (`Forward`, `Backward`)
 - **Executive function:** Trail Making Test (`Part A`, `Part B`), Reaction Time (`Simple`, `Choice`)
 
+## Testing
+
+```bash
+npm test
+pytest -v
+```
+
 ## Documentation
 
 For the LSL-to-WebSocket bridge setup, clock synchronization, binary packet format, and export schemas, see [docs/TECHNICAL.md](docs/TECHNICAL.md).
-
----
-
